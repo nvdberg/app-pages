@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Working-Bolt — Privacy Policy</title>
+<style>
+  :root{
+    --bg:#ffffff; --fg:#141821; --muted:#5b6472; --line:#e6e9ef;
+    --card:#f7f8fa; --accent:#e07a12; --accent-fg:#8a4a05;
+    color-scheme:light dark;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{--bg:#0b0e14; --fg:#e6eaf2; --muted:#94a0b3; --line:#1e2531; --card:#121722; --accent:#f7941d; --accent-fg:#f7b45a;}
+  }
+  :root[data-theme="light"]{--bg:#ffffff; --fg:#141821; --muted:#5b6472; --line:#e6e9ef; --card:#f7f8fa; --accent:#e07a12; --accent-fg:#8a4a05;}
+  :root[data-theme="dark"]{--bg:#0b0e14; --fg:#e6eaf2; --muted:#94a0b3; --line:#1e2531; --card:#121722; --accent:#f7941d; --accent-fg:#f7b45a;}
+  *{box-sizing:border-box}
+  body{max-width:44rem;margin:0 auto;padding:3rem 1.4rem 4rem;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    line-height:1.65;color:var(--fg);background:var(--bg);
+    -webkit-font-smoothing:antialiased;font-size:1.02rem}
+  .eyebrow{display:inline-flex;align-items:center;gap:.4rem;font-size:.78rem;font-weight:700;
+    letter-spacing:.08em;text-transform:uppercase;color:var(--accent-fg);
+    background:color-mix(in srgb,var(--accent) 15%,transparent);
+    padding:.3rem .6rem;border-radius:999px}
+  h1{font-size:1.85rem;line-height:1.15;margin:.9rem 0 .3rem;text-wrap:balance;letter-spacing:-.01em}
+  h2{font-size:1.1rem;margin:2.2rem 0 .5rem;letter-spacing:-.005em}
+  .updated{color:var(--muted);font-size:.9rem;margin:0 0 1.8rem}
+  p{margin:.55rem 0}
+  a{color:var(--accent-fg);text-underline-offset:2px}
+  strong{font-weight:650}
+  .lead{font-size:1.1rem}
+  .callout{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--accent);
+    border-radius:12px;padding:1rem 1.15rem;margin:1.4rem 0}
+  ul{margin:.5rem 0;padding-left:1.15rem}
+  li{margin:.35rem 0}
+  hr{border:none;border-top:1px solid var(--line);margin:2.4rem 0}
+  footer{color:var(--muted);font-size:.85rem;margin-top:2.4rem}
+</style>
+
+<span class="eyebrow">⚡ Working-Bolt</span>
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: 7 August 2026</p>
+
+<p class="lead">Working-Bolt (“the app”) is a private scheduling companion for a physician group
+that uses the Lightning&nbsp;Bolt scheduler. It helps members see open shifts, their own roster,
+who is on service, and arrange shift swaps. This policy explains, plainly, what the app does and
+does not do with your information.</p>
+
+<div class="callout">
+<strong>The short version.</strong> The app never sees or stores your Lightning&nbsp;Bolt password.
+Your schedule is cached on your device. A small amount of data — open-shift postings, your employee
+ID, and your device’s notification token — is sent to a private backend only to power shift alerts
+and the shared open-shift pool. There are no ads, no third-party tracking, and nothing is ever sold.
+</div>
+
+<h2>Signing in to Lightning Bolt</h2>
+<p>You sign in to Lightning&nbsp;Bolt inside a secure web view that loads Lightning&nbsp;Bolt’s own
+login page. Your username and password are entered directly on that page and are
+<strong>never seen, stored, or transmitted by the app or its developer</strong>. The app uses only
+the resulting session to read your schedule, exactly as the Lightning&nbsp;Bolt website would.</p>
+
+<h2>Data stored on your device</h2>
+<p>Your upcoming shifts, the group roster, open-shift postings, and related schedule information are
+cached <strong>locally on your device</strong> so the app is fast and works offline. Deleting the
+app removes this local data.</p>
+
+<h2>Data sent to our backend</h2>
+<p>To deliver push alerts for newly opened shifts and to show the group’s shared open-shift pool, the
+app sends the following to a private backend service (hosted on Supabase):</p>
+<ul>
+  <li><strong>Open-shift postings</strong> — the shifts colleagues have offered for pickup;</li>
+  <li><strong>Your employee ID</strong> — to match alerts and swap offers to the right person;</li>
+  <li><strong>Your device’s push notification token</strong> — used solely to send shift alerts through Apple’s Push Notification service.</li>
+</ul>
+<p>Any colleague names or shift details shown in the app are the <strong>same information already
+visible to every member</strong> inside Lightning&nbsp;Bolt. This data is used only to operate the
+app’s features and is not used for advertising or profiling.</p>
+
+<h2>What the app does not do</h2>
+<ul>
+  <li>No advertising and no advertising identifiers.</li>
+  <li>No third-party analytics or tracking SDKs.</li>
+  <li>No selling, renting, or sharing of your data with anyone.</li>
+  <li>No user accounts or passwords are created or collected by the app.</li>
+</ul>
+
+<h2>Push notifications</h2>
+<p>If you allow notifications, your device token is used only to send you alerts about open shifts and
+swap activity relevant to you. You can turn notifications off at any time in iOS Settings.</p>
+
+<h2>Data retention and deletion</h2>
+<p>Local data is removed when you delete the app. To have your employee ID and push token removed
+from the backend, contact us at the address below and we will delete them.</p>
+
+<h2>Children</h2>
+<p>The app is a professional tool for members of a physician group and is not directed at children.</p>
+
+<h2>Lightning Bolt</h2>
+<p>Lightning&nbsp;Bolt is a scheduling product operated by PerfectServe. Using the app requires your
+own Lightning&nbsp;Bolt account, and Lightning&nbsp;Bolt’s handling of your data is governed by its
+own terms and privacy policy. This app is an independent companion and is not affiliated with or
+endorsed by PerfectServe.</p>
+
+<h2>Changes</h2>
+<p>If this policy changes, the updated version will be posted on this page with a new date.</p>
+
+<h2>Contact</h2>
+<p>Questions about this policy or the app:
+<a href="mailto:nicolaasvanderberg2@gmail.com">nicolaasvanderberg2@gmail.com</a></p>
+
+<hr>
+<footer>Working-Bolt is an independent tool and is not affiliated with, endorsed by, or connected to
+PerfectServe or Lightning&nbsp;Bolt.</footer>
+
+</body></html>
