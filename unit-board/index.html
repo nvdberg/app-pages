@@ -89,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.9 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.10 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -175,16 +175,30 @@ function rsTodayBlock(d){
 
 function rsSnapBlock(d){
   var v=d.vitals||{}, fl=d.fluids||{};
-  function rows(pairs){ return pairs.filter(function(p){return p[1]!=null&&String(p[1]).trim();}).map(function(p){ return '<div class="r"><span class="l">'+rsEsc(p[0])+'</span><span class="v">'+rsFlag(p[1])+'</span></div>'; }).join('')||'<div class="r"><span class="l">—</span><span class="v"></span></div>'; }
-  // pull an ABG/VBG section from labs if present
+  // Vitals + support + fluids as ONE horizontal strip (was a 4-box grid)
+  var vit=[];
+  if(v.bp)vit.push('BP '+rsFlag(v.bp)+(v.map?' (MAP '+rsEsc(v.map)+')':''));
+  if(v.hr)vit.push('HR '+rsFlag(v.hr));
+  if(v.sats)vit.push('SpO2 '+rsFlag(v.sats));
+  if(v.rr)vit.push('RR '+rsFlag(v.rr));
+  if(v.tmax)vit.push('Tmax '+rsFlag(v.tmax));
+  if(v.gcs)vit.push('GCS '+rsEsc(v.gcs));
+  if(v.resp)vit.push('Resp '+rsEsc(v.resp));
+  if(v.cvs)vit.push('CVS '+rsEsc(v.cvs));
+  if(v.abd)vit.push('Abd '+rsEsc(v.abd));
+  if(fl.fb)vit.push('FB '+rsEsc(fl.fb));
+  if(fl.uo)vit.push('UO '+rsEsc(fl.uo));
+  if(fl.note)vit.push(rsEsc(fl.note));
+  if(v.other)vit.push(rsEsc(v.other));
+  var out=vit.length?'<div class="strip"><span class="sl">Vitals</span> '+vit.join(' &nbsp;·&nbsp; ')+'</div>':'';
+  // ABG/VBG as ONE line from the labs (was its own box)
   var abg=(d.labs||[]).filter(function(s){return /abg|vbg|gas/i.test(s.section||'');})[0];
-  var abgRows=abg?abg.items.slice(0,6).map(function(it){return [it.l,(it.v||'')+(it.f==='hi'?' (H)':it.f==='lo'?' (L)':'')];}):[['','—']];
-  return '<div class="snap">'
-    +'<div class="snap-box"><h3>Vitals</h3><div class="rows">'+rows([['BP',v.bp&&v.map?v.bp+' ('+v.map+')':v.bp],['HR',v.hr],['SpO2',v.sats],['Tmax',v.tmax],['RR',v.rr],['GCS',v.gcs]])+'</div></div>'
-    +'<div class="snap-box"><h3>Airway / Support</h3><div class="rows">'+rows([['Resp',v.resp],['Diet',(d.fluids&&d.fluids.note)?'':''],['CVS',v.cvs],['Abd',v.abd],['Other',v.other]])+'</div></div>'
-    +'<div class="snap-box"><h3>ABG / VBG</h3><div class="rows">'+rows(abgRows)+'</div></div>'
-    +'<div class="snap-box"><h3>Fluid Balance</h3><div class="rows">'+rows([['Balance',fl.fb],['Urine out',fl.uo],['Note',fl.note]])+'</div></div>'
-    +'</div>';
+  if(abg&&abg.items&&abg.items.length){
+    var parts=abg.items.filter(function(it){return it&&it.v!=null&&String(it.v).trim();}).map(function(it){
+      var suf=(it.f==='hi'?' (H)':it.f==='lo'?' (L)':''); return (it.l?rsEsc(it.l)+' ':'')+rsFlag(String(it.v)+suf); });
+    if(parts.length)out+='<div class="strip"><span class="sl">ABG</span> '+parts.join(' &nbsp;·&nbsp; ')+'</div>';
+  }
+  return out;
 }
 
 function rsLabsBlock(d){
@@ -203,15 +217,15 @@ function rsLabsBlock(d){
 }
 
 function rsProblemsBlock(d){
-  var rows=(d.problems||[]).map(function(p,i){
-    if(!p||!p.name)return '';
-    var isGoc=p.type==='goc', isDispo=p.type==='dispo';
-    var cls=isGoc?' class="goc"':isDispo?' class="dispo"':'';
+  // GoC is shown in the flags row above — NOT repeated as a problem row (de-dup, 26-Aug-2026)
+  var probs=(d.problems||[]).filter(function(p){return p&&p.name&&p.type!=='goc';});
+  var rows=probs.map(function(p,i){
+    var isDispo=p.type==='dispo';
+    var cls=isDispo?' class="dispo"':'';
     var badge=p.badge&&p.badge.text?'<span class="badge '+({b:'bl',g:'gr',o:'',r:''}[(p.badge.type||'o')]||'')+'">'+rsEsc(p.badge.text)+'</span>':'';
     // doing now = tx (+ key_labs summary); plan = plan (+ bp)
     var doing=rsLines(p.tx);
     if(p.key_labs&&p.key_labs.length){ var kl=p.key_labs.filter(function(k){return k&&k.v;}).map(function(k){return (k.l?k.l+' ':'')+k.v;}); if(kl.length)doing.push(kl.join(' | ')); }
-    if(isGoc){ doing=rsLines(p.goc_status? (p.goc_status+(p.goc_note?' — '+p.goc_note:'')) : p.context); }
     if(isDispo){ doing=rsLines(p.dispo_summary||p.context); }
     var plan=rsLines(p.plan).concat(rsLines(p.bp).map(function(b){return b;}));
     function ul(arr){ return arr.length?('<ul>'+arr.map(function(l){return '<li'+(rsWarn(l)?' class="warn"':'')+'>'+rsFlag(l.replace(/^⚠\s*/,''))+'</li>';}).join('')+'</ul>'):''; }
@@ -232,38 +246,39 @@ function renderRoundingSheet(d){
   var CSS='*{box-sizing:border-box;margin:0;padding:0}'
    +'@page{size:A4 portrait;margin:12mm 8mm 8mm 8mm}'
    +"html,body{background:#fff;color:#000;font-family:'Segoe UI','Helvetica Neue',Arial,sans-serif}"
-   +'body{font-size:9.6pt;line-height:1.38;padding:8px 7px}'
+   +'body{font-size:9.1pt;line-height:1.3;padding:6px 6px}'
+   +'.strip{border:1px solid #666;padding:3px 8px;margin-bottom:5px;font-size:9pt;line-height:1.45;break-inside:avoid;background:#fafafa}'
+   +'.strip .sl{font-weight:800;text-transform:uppercase;font-size:7pt;letter-spacing:.4px;color:#333;margin-right:5px}'
    +'@media print{body{padding:0}.print-instructions{display:none!important}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}}'
-   +'.hdr{border:1.5px solid #000;padding:7px 11px;margin-bottom:7px;break-after:avoid;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}'
-   +'.hdr-l h1{font-size:16pt;font-weight:800;line-height:1.1;margin-bottom:2px}.hdr-l .sub{font-size:9.6pt;color:#222;font-weight:600}.hdr-l .dx{font-size:10.2pt;font-weight:600;margin-top:4px;max-width:520px}'
+   +'.hdr{border:1.5px solid #000;padding:7px 11px;margin-bottom:5px;break-after:avoid;display:flex;justify-content:space-between;align-items:flex-start;gap:8px}'
+   +'.hdr-l h1{font-size:12.5pt;font-weight:800;line-height:1.15}.hdr-l h1 .rl{font-weight:400;font-size:8pt;color:#555;white-space:nowrap}.hdr-l .dx{font-size:9.5pt;font-weight:600;margin-top:3px;max-width:560px}'
    +'.hdr-r{text-align:right;font-size:8.2pt;color:#333;line-height:1.3}.hdr-r .date{font-size:12.5pt;font-weight:800;color:#000}.hdr-r .day{background:#000;color:#fff;padding:2px 7px;border-radius:2px;display:inline-block;margin-top:3px;font-weight:700;font-size:9.4pt}'
-   +'.flags{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:5px;margin-bottom:7px;break-inside:avoid}'
+   +'.flags{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:5px;margin-bottom:5px;break-inside:avoid}'
    +'.flag{border:1px solid #666;padding:4px 8px;font-size:9.6pt;background:#f5f5f5}.flag .lbl{font-size:7.6pt;text-transform:uppercase;font-weight:700;letter-spacing:.4px;color:#555;margin-bottom:2px}.flag .val{font-weight:700}'
    +'.flag.warn{background:#fde8e8;border-color:#b02020}.flag.warn .val{color:#b02020}.flag.ok{background:#eaf5ea;border-color:#2c7a2c}'
-   +'.today{border:1.5px solid #d97706;background:#fff7e6;padding:7px 10px;margin-bottom:7px;break-inside:avoid}'
+   +'.today{border:1.5px solid #d97706;background:#fff7e6;padding:7px 10px;margin-bottom:5px;break-inside:avoid}'
    +'.today h2{font-size:9.8pt;font-weight:800;color:#7a3f00;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}'
-   +'.today-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;row-gap:3px;font-size:9.4pt}'
+   +'.today-grid{display:grid;grid-template-columns:1fr 1fr;column-gap:14px;row-gap:2px;font-size:8.7pt}'
    +'.today-cell .k{font-weight:700;color:#7a3f00;text-transform:uppercase;font-size:7.6pt;letter-spacing:.3px;display:block;margin-bottom:2px}'
    +'.today-cell ul{list-style:none;padding:0;margin:0}.today-cell li{padding:1.5px 0;line-height:1.35}.today-cell li.warn{color:#b02020;font-weight:600}.today-cell li.warn::before{content:"⚠ ";font-weight:800}'
-   +'.snap{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:7px;break-inside:avoid}'
+   +'.snap{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px;margin-bottom:5px;break-inside:avoid}'
    +'.snap-box{border:1px solid #666;padding:4px 8px}.snap-box h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px;border-bottom:1px solid #ccc;padding-bottom:2px}'
    +'.snap-box .rows{font-size:9pt;line-height:1.45}.snap-box .rows .r{display:flex;justify-content:space-between;gap:5px}.snap-box .rows .r .l{color:#555;font-weight:600}.snap-box .rows .r .v{font-weight:700;text-align:right}'
-   +'.labs{border:1px solid #666;padding:4px 8px;margin-bottom:7px;break-inside:avoid;background:#fafafa}.labs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}'
-   +'.labs .line{font-size:8.9pt;line-height:1.45;margin-bottom:2px}.labs .line .pn{font-weight:700;color:#333;display:inline-block;min-width:82px}'
+   +'.labs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.labs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}'
+   +'.labs .line{font-size:8.4pt;line-height:1.4;margin-bottom:1px}.labs .line .pn{font-weight:700;color:#333;display:inline-block;min-width:78px}'
    +'.hi{color:#b02020;font-weight:700}.lo{color:#0d47a1;font-weight:700}'
    +'table.prob{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9.4pt}'
    +'table.prob thead{display:table-header-group;background:#000;color:#fff}table.prob thead th{padding:4px 7px;text-align:left;font-weight:700;text-transform:uppercase;font-size:8pt;letter-spacing:.5px}'
    +'table.prob tbody tr{page-break-inside:avoid;break-inside:avoid;border-bottom:1px solid #999}table.prob tbody td{padding:5px 7px;vertical-align:top;line-height:1.38}'
-   +'table.prob tbody td.name{font-weight:800;width:22%}table.prob tbody td.doing{width:34%;font-size:9pt}table.prob tbody td.plan{width:44%;font-size:9pt}table.prob tbody td.plan .warn{color:#b02020;font-weight:700}'
+   +'table.prob tbody td.name{font-weight:800;width:22%}table.prob tbody td.doing{width:34%;font-size:8.6pt}table.prob tbody td.plan{width:44%;font-size:8.6pt}table.prob tbody td.plan .warn{color:#b02020;font-weight:700}'
    +'table.prob tbody tr.goc td.name{color:#0d47a1}table.prob tbody tr.dispo td.name{color:#1b5e20}table.prob tbody td ul{margin:0;padding-left:14px}table.prob tbody td li{padding:1px 0;margin:0;line-height:1.35}'
    +'.badge{display:inline-block;background:#f0883e;color:#fff;padding:0 5px;border-radius:2px;font-size:7.4pt;font-weight:700;margin-left:4px;vertical-align:middle}.badge.bl{background:#1a73e8}.badge.gr{background:#28a745}'
    +'.foot{border-top:1px solid #999;padding-top:5px;margin-top:6px;font-size:8pt;color:#444;break-inside:avoid;display:flex;justify-content:space-between;gap:8px}.foot .legend{font-style:italic}'
    +'.print-instructions{background:#fff9e6;border:1px solid #d97706;padding:8px 12px;margin-top:14px;font-size:9.5pt;border-radius:4px}.print-instructions strong{color:#7a3f00}.print-instructions ul{margin-top:4px;padding-left:20px}';
-  var body='<div class="hdr"><div class="hdr-l"><h1>BED '+rsEsc(d.bed)+'</h1>'
-    +'<div class="sub">'+rsEsc(d.age_sex||'')+' · Day '+day+' '+rsEsc(unit)+rsEsc(admitStr)+'</div>'
-    +(dx?'<div class="dx">'+rsEsc(dx)+'</div>':'')+'</div>'
-    +'<div class="hdr-r"><div class="date">'+rsDate()+'</div><div class="day">ICU Day '+day+'</div>'
-    +'<div style="margin-top:4px">Rounding sheet<br>Not an SCM note</div></div></div>'
+  var body='<div class="hdr"><div class="hdr-l">'
+    +'<h1>BED '+rsEsc(d.bed)+' · '+rsEsc(d.age_sex||'')+' · Day '+day+' '+rsEsc(unit)+rsEsc(admitStr)+' <span class="rl">· rounding sheet — not an SCM note</span></h1>'
+    +(dx?'<div class="dx">Dx: '+rsEsc(dx)+'</div>':'')+'</div>'
+    +'<div class="hdr-r"><div class="date">'+rsDate()+'</div><div class="day">ICU Day '+day+'</div></div></div>'
     +rsFlagsBlock(d)+rsTodayBlock(d)+rsSnapBlock(d)+rsLabsBlock(d)+rsProblemsBlock(d)
     +'<div class="foot"><div class="legend">† = inferred / not in signed SCM &nbsp;·&nbsp; (H) high &nbsp;·&nbsp; (L) low &nbsp;·&nbsp; (HH)/(LL) markedly abnormal &nbsp;·&nbsp; ⚠ safety flag</div>'
     +'<div>Bed '+rsEsc(d.bed)+' · '+rsEsc(unit)+' · '+rsDate()+' · board-generated §23</div></div>'
