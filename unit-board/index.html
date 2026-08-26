@@ -20,6 +20,9 @@
   .syncst.ok{background:#1e7a3a;color:#fff}
   .syncst.err{background:#b31414;color:#fff}
   .syncst.busy{background:#8a5a00;color:#fff}
+  #robar{display:none;align-items:center;gap:12px;background:#fff3cd;border-bottom:1px solid #f0c85a;color:#664d03;padding:7px 14px;font-size:13px}
+  #robar button{font:inherit;font-weight:700;background:#6e40c9;color:#fff;border:0;border-radius:6px;padding:5px 12px;cursor:pointer}
+  #robar button.sec{background:#8a6d3b}
   .tabs button{font:inherit;font-weight:600;background:#2a4ea0;color:#cfe;border:0;border-radius:6px 6px 0 0;padding:6px 14px;cursor:pointer}
   .tabs button.on{background:#eef2f8;color:#1a3c8f}
   #wrap{flex:1;display:flex;min-height:0}
@@ -86,17 +89,18 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.8 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.9 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
-  <span id="dateLbl" style="opacity:.85"></span>
-  <span style="display:flex;gap:4px;align-items:center;font-size:12px;margin-left:10px">Text <button class="fzb" onclick="fz(-0.08)">A&minus;</button><button class="fzb" onclick="fz(0.08)">A+</button></span>
+  <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
   <div class="tabs">
     <button data-sec="daily" class="on" onclick="showSec('daily')">Daily</button>
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
   </div>
+  <span style="display:flex;gap:3px;align-items:center;margin-left:8px" title="Text size"><button class="fzb" onclick="fz(-0.08)">A&minus;</button><button class="fzb" onclick="fz(0.08)">A+</button></span>
 </header>
+<div id="robar"></div>
 <div id="wrap">
   <aside id="rail"></aside>
   <section id="stage">
@@ -427,10 +431,36 @@ function esc(s){return String(s==null?'':s).replace(/[&<>]/g,function(c){return{
 function bd(n){ return beds[n]?beds[n].d:null; }               // the D (schema) object for a bed
 function mintStay(){ return 's'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36); }
 function fz(d){ fontScale=Math.max(0.9,Math.min(2.0, Math.round((fontScale+d)*100)/100)); try{localStorage.setItem('ub_fontscale',fontScale);}catch(e){} renderView(); }
-function today(){var d=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear();}
-function storeKey(){return 'unitboard_'+unit+'_'+today();}
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function today(){var d=new Date();return String(d.getDate()).padStart(2,'0')+'-'+MON[d.getMonth()]+'-'+d.getFullYear();}
+function isoToday(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function boardDate(iso){var p=String(iso).split('-');return p[2]+'-'+MON[(+p[1])-1]+'-'+p[0];}   // YYYY-MM-DD -> DD-Mon-YYYY
+var viewIso=isoToday(), readOnly=false;
+function curDate(){ return viewIso===isoToday()?today():boardDate(viewIso); }
+function isTodayView(){ return viewIso===isoToday(); }
+function storeKey(){return 'unitboard_'+unit+'_'+curDate();}
 function histKey(){return 'unitboard_hist_'+unit;}
+// ---- date / history navigation ----
+function onDatePick(){ var v=document.getElementById('dateInp').value; if(!v)return; setViewDate(v); }
+function goToday(){ setViewDate(isoToday()); }
+function setViewDate(iso){
+  viewIso=iso; readOnly=!isTodayView();
+  document.getElementById('dateInp').value=iso;
+  document.getElementById('todayBtn').style.display=isTodayView()?'none':'inline-block';
+  beds={}; current=null; load(); renderRail(); renderRoBar();
+  setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':''); if(syncOn())syncPull();
+  showSec('daily');
+}
+function renderRoBar(){
+  var bar=document.getElementById('robar'); if(!bar)return;
+  if(isTodayView()){ bar.style.display='none'; bar.innerHTML=''; return; }
+  bar.style.display='flex';
+  bar.innerHTML = readOnly
+    ? '<span>👁 Viewing <b>'+curDate()+'</b> — read-only history.</span><button onclick="unlockDay()">✏ Edit this day</button><button class="sec" onclick="goToday()">↩ Back to today</button>'
+    : '<span>✏ <b>Editing '+curDate()+'</b> (past day). Changes save + sync to that date.</span><button class="sec" onclick="goToday()">↩ Back to today</button>';
+}
+function unlockDay(){ if(!confirm('Edit '+curDate()+'? Changes save to that past day and sync across your devices.'))return; readOnly=false; renderRoBar(); renderBedBar(); }
+function guardEdit(){ if(readOnly){ alert('This is a past day (read-only). Click “✏ Edit this day” in the banner to make changes.'); return false; } return true; }
 
 function taskCount(w){ if(!w||!w.d||!w.d.tasks)return 0; var done=w.taskDone||[],c=0;
   w.d.tasks.forEach(function(t,i){ if(done.indexOf(i)<0)c++; }); return c; }
@@ -444,7 +474,7 @@ function dispoMark(d){ if(!d)return ''; var s=''; (d.problems||[]).forEach(funct
 function init(){
   var sel=document.getElementById('unitSel');
   Object.keys(UNITS).forEach(function(u){var o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o);});
-  document.getElementById('dateLbl').textContent='· '+today();
+  document.getElementById('dateInp').value=viewIso; renderRoBar();
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
   if(syncOn()){ syncPull(); startSyncPoll(); }
@@ -459,10 +489,10 @@ function load(){
       beds[k]={ d:v, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
     }
   });
-  localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+today())||'0',10)||0;
+  localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+curDate())||'0',10)||0;
 }
 function save(){ try{ localStorage.setItem(storeKey(), JSON.stringify(beds)); }catch(e){}
-  if(!applyingRemote){ localStateAt=Date.now(); try{localStorage.setItem('ub_stateAt_'+unit+'_'+today(),String(localStateAt));}catch(e){} syncPush(); } }
+  if(!applyingRemote){ localStateAt=Date.now(); try{localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));}catch(e){} syncPush(); } }
 
 // ---- cross-device sync (Supabase board_state; passphrase enforced server-side by RLS header) ----
 var SB_URL="https://qbtnxkzpddexczhcvxre.supabase.co/rest/v1/board_state";
@@ -475,17 +505,17 @@ function setSync(txt,cls){ var e=document.getElementById('syncst'); if(e){ e.tex
 function syncPush(){ if(!syncOn()||applyingRemote)return; clearTimeout(pushTimer); pushTimer=setTimeout(doPush,1200); }
 function doPush(){ if(!syncOn())return; setSync('⇅ syncing…','busy');
   var iso=new Date(localStateAt||Date.now()).toISOString();
-  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),body:JSON.stringify({space:syncSpace,unit:unit,date:today(),data:{beds:beds},updated_at:iso})})
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),body:JSON.stringify({space:syncSpace,unit:unit,date:curDate(),data:{beds:beds},updated_at:iso})})
     .then(function(r){ setSync(r.ok?'⇅ synced':'⇅ sync err', r.ok?'ok':'err'); })
     .catch(function(){ setSync('⇅ offline','err'); });
 }
 function syncPull(cb){ if(!syncOn()){cb&&cb();return;}
-  var q=SB_URL+'?select=data,updated_at&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.'+encodeURIComponent(unit)+'&date=eq.'+encodeURIComponent(today());
+  var q=SB_URL+'?select=data,updated_at&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.'+encodeURIComponent(unit)+'&date=eq.'+encodeURIComponent(curDate());
   fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
     if(rows&&rows[0]&&rows[0].data&&rows[0].data.beds){
       var remoteAt=Date.parse(rows[0].updated_at)||0;
       if(remoteAt>localStateAt){ applyingRemote=true; beds=rows[0].data.beds; localStateAt=remoteAt;
-        try{localStorage.setItem(storeKey(),JSON.stringify(beds));localStorage.setItem('ub_stateAt_'+unit+'_'+today(),String(localStateAt));}catch(e){}
+        try{localStorage.setItem(storeKey(),JSON.stringify(beds));localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));}catch(e){}
         applyingRemote=false; renderRail(); renderView(); }
     }
     setSync('⇅ synced','ok'); cb&&cb();
@@ -573,6 +603,7 @@ function renderBedBar(){
     '<button class="sec" onclick="transferBed(\''+current+'\')" title="Transfer/discharge: archive note & clear">⇥ Transfer / DC</button>';
 }
 function assignUnassigned(){
+  if(!guardEdit())return;
   if(!/^U\d+$/.test(String(current))||!beds[current])return;
   var num=prompt('Assign '+String(current).replace('U','Unassigned ')+' to which bed number?');
   if(num===null)return; num=parseInt(num,10);
@@ -614,6 +645,7 @@ function loadJSONText(t, srcMsg){
   return {loaded:loaded, errs:errs};
 }
 function loadPaste(){
+  if(!guardEdit())return;
   var t=document.getElementById('pjson').value.trim();
   if(!t){ document.getElementById('msg').textContent='Paste a bed JSON (or an array) first.'; return; }
   var res=loadJSONText(t);
@@ -659,18 +691,18 @@ function openBed(n){ current=n; section='daily'; setTab('daily'); renderRail(); 
 function showSec(s){ section=s; setTab(s); renderView(); }
 
 // ---- bed lifecycle ----
-function toggleRounded(){ var w=beds[current]; if(!w)return; w.state=(w.state==='rounded')?'preround':'rounded'; save(); renderRail(); renderBedBar(); }
-function toggleTask(i){ var w=beds[current]; if(!w)return; w.taskDone=w.taskDone||[]; var k=w.taskDone.indexOf(i);
+function toggleRounded(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; w.state=(w.state==='rounded')?'preround':'rounded'; save(); renderRail(); renderBedBar(); }
+function toggleTask(i){ if(!guardEdit())return; var w=beds[current]; if(!w)return; w.taskDone=w.taskDone||[]; var k=w.taskDone.indexOf(i);
   if(k>=0)w.taskDone.splice(k,1); else w.taskDone.push(i); save(); renderRail(); renderBedBar(); }
-function addTask(){ var w=beds[current]; if(!w)return; var t=prompt('New task / watch-item for Bed '+current+':'); if(!t)return;
+function addTask(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; var t=prompt('New task / watch-item for Bed '+current+':'); if(!t)return;
   w.d.tasks=w.d.tasks||[]; w.d.tasks.push({text:t,kind:'pending'}); save(); renderRail(); renderBedBar(); }
 function archiveBed(n,reason){ try{ var h=JSON.parse(localStorage.getItem(histKey())||'[]'); var w=beds[n];
   h.push({date:today(),unit:unit,bed:n,reason:reason,stay:w.stay,state:w.state,overnight:w.overnight||'',d:w.d,archivedAt:Date.now()});
   localStorage.setItem(histKey(), JSON.stringify(h)); }catch(e){} }
-function newAdmission(n){ if(!beds[n])return; if(!confirm('Start a NEW admission in Bed '+n+'?\nThe current note is archived to history and the bed is cleared.'))return;
+function newAdmission(n){ if(!guardEdit())return; if(!beds[n])return; if(!confirm('Start a NEW admission in Bed '+n+'?\nThe current note is archived to history and the bed is cleared.'))return;
   archiveBed(n,'new-admission'); delete beds[n]; save(); renderRail(); renderView();
   document.getElementById('msg').textContent='Bed '+n+' cleared — paste the new patient’s JSON.'; }
-function transferBed(n){ if(!beds[n])return; var r=prompt('Transfer / discharge Bed '+n+' — reason?\n(ward / step-down / home / died)','ward'); if(r===null)return;
+function transferBed(n){ if(!guardEdit())return; if(!beds[n])return; var r=prompt('Transfer / discharge Bed '+n+' — reason?\n(ward / step-down / home / died)','ward'); if(r===null)return;
   archiveBed(n, r||'transfer'); delete beds[n]; if(current===n)current=n; save(); renderRail(); renderView();
   document.getElementById('msg').textContent='Bed '+n+' transferred ('+(r||'—')+') → archived to history.'; }
 
@@ -718,6 +750,7 @@ function printHandover(){ var f=document.getElementById('hvframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use the sheet’s own Print button, or Ctrl/Cmd+P inside it.');} } }
 function hvTips(){ alert('Print settings (Chrome print dialog):\n• Paper: A4 · Portrait\n• Margins: Default\n• Scale: 100%  (NOT Fit to page)\n• Headers and footers: OFF   ← the usual top-clipping culprit\n• Background graphics: ON     ← colours + GoC badges\n\nIf cards clip at the bottom, nudge Row − or Font − in the bar above.'); }
 function loadColleagueBox(){
+  if(!guardEdit())return;
   var ta=document.getElementById('collta'); if(!ta)return; var t=(ta.value||'').trim(); if(!t)return;
   var isJson=false; try{ JSON.parse(t); isJson=true; }catch(e){}
   if(isJson){ loadJSONText(t,'Added'); ta.value=''; renderRail(); renderView(); return; }
