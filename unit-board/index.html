@@ -89,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.10 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.11 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -459,6 +459,7 @@ function histKey(){return 'unitboard_hist_'+unit;}
 function onDatePick(){ var v=document.getElementById('dateInp').value; if(!v)return; setViewDate(v); }
 function goToday(){ setViewDate(isoToday()); }
 function setViewDate(iso){
+  captureCurrentBed();
   viewIso=iso; readOnly=!isTodayView();
   document.getElementById('dateInp').value=iso;
   document.getElementById('todayBtn').style.display=isTodayView()?'none':'inline-block';
@@ -494,7 +495,7 @@ function init(){
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
   if(syncOn()){ syncPull(); startSyncPoll(); }
 }
-function switchUnit(){ unit=document.getElementById('unitSel').value; beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
+function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
 
 function load(){
   try{ var raw=localStorage.getItem(storeKey()); beds=raw?JSON.parse(raw):{}; }catch(e){ beds={}; }
@@ -694,6 +695,8 @@ function renderView(){
             .replace(NEEDLE, "var D="+JSON.stringify(d)+",SCM='';");
         }
         f.srcdoc=html; view.appendChild(f);
+        // restore a previously-generated SCM block on return to this bed (Item 2 fix)
+        if(beds[current]._scm){ (function(scm){ f.addEventListener('load',function(){ try{ var doc=f.contentDocument, s=doc.getElementById('scm'), p=doc.getElementById('sp'); if(s&&p){ s.textContent=scm; p.style.display='block'; if(doc.defaultView)doc.defaultView.SCM=scm; } }catch(e){} }); })(beds[current]._scm); }
       }
     } else {
       view.innerHTML='<div class="panel"><div class="stub">Pick a bed on the left, or paste a bed JSON above. It auto-routes by the <code>bed</code> field.</div></div>';
@@ -702,8 +705,19 @@ function renderView(){
   else if(section==='prompts'){ view.innerHTML=promptsPanel(); }
   renderBedBar();
 }
-function openBed(n){ current=n; section='daily'; setTab('daily'); renderRail(); renderView(); }
-function showSec(s){ section=s; setTab(s); renderView(); }
+// capture the OUTGOING bed's iframe state (edited fields via captureToD + the SCM block) before it's re-mounted
+function captureCurrentBed(){
+  if(current==null||!beds[current]||!beds[current].d||readOnly)return;
+  try{
+    var ifr=document.querySelector('#view iframe'); if(!ifr)return;
+    if(ifr.contentWindow&&typeof ifr.contentWindow.captureToD==='function'){ var ed=ifr.contentWindow.captureToD(); if(ed&&ed.bed!=null)beds[current].d=ed; }
+    var doc=ifr.contentDocument;
+    if(doc){ var s=doc.getElementById('scm'), p=doc.getElementById('sp'); if(s&&p&&p.style.display==='block'&&(s.textContent||'').trim())beds[current]._scm=s.textContent; }
+    save();
+  }catch(e){}
+}
+function openBed(n){ captureCurrentBed(); current=n; section='daily'; setTab('daily'); renderRail(); renderView(); }
+function showSec(s){ if(section==='daily')captureCurrentBed(); section=s; setTab(s); renderView(); }
 
 // ---- bed lifecycle ----
 function toggleRounded(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; w.state=(w.state==='rounded')?'preround':'rounded'; save(); renderRail(); renderBedBar(); }
