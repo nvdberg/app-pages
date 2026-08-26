@@ -15,7 +15,11 @@
   header h1{font-size:17px;margin:0;font-weight:700}
   .fzb{font:inherit;font-weight:800;background:#2a4ea0;color:#fff;border:0;border-radius:5px;width:26px;height:24px;cursor:pointer;line-height:1}
   header select{font:inherit;padding:4px 8px;border-radius:5px;border:0}
-  .tabs{display:flex;gap:4px;margin-left:auto}
+  .tabs{display:flex;gap:4px;margin-left:8px}
+  .syncst{margin-left:auto;cursor:pointer;font-size:11px;font-weight:700;padding:4px 11px;border-radius:12px;background:#2a4ea0;color:#cfe;white-space:nowrap;user-select:none}
+  .syncst.ok{background:#1e7a3a;color:#fff}
+  .syncst.err{background:#b31414;color:#fff}
+  .syncst.busy{background:#8a5a00;color:#fff}
   .tabs button{font:inherit;font-weight:600;background:#2a4ea0;color:#cfe;border:0;border-radius:6px 6px 0 0;padding:6px 14px;cursor:pointer}
   .tabs button.on{background:#eef2f8;color:#1a3c8f}
   #wrap{flex:1;display:flex;min-height:0}
@@ -82,10 +86,11 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.7 · 25-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.8 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span id="dateLbl" style="opacity:.85"></span>
   <span style="display:flex;gap:4px;align-items:center;font-size:12px;margin-left:10px">Text <button class="fzb" onclick="fz(-0.08)">A&minus;</button><button class="fzb" onclick="fz(0.08)">A+</button></span>
+  <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
   <div class="tabs">
     <button data-sec="daily" class="on" onclick="showSec('daily')">Daily</button>
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
@@ -441,8 +446,10 @@ function init(){
   Object.keys(UNITS).forEach(function(u){var o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o);});
   document.getElementById('dateLbl').textContent='· '+today();
   load(); renderRail(); showSec('daily');
+  setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
+  if(syncOn()){ syncPull(); startSyncPoll(); }
 }
-function switchUnit(){ unit=document.getElementById('unitSel').value; beds={}; current=null; load(); renderRail(); showSec('daily'); }
+function switchUnit(){ unit=document.getElementById('unitSel').value; beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
 
 function load(){
   try{ var raw=localStorage.getItem(storeKey()); beds=raw?JSON.parse(raw):{}; }catch(e){ beds={}; }
@@ -452,8 +459,47 @@ function load(){
       beds[k]={ d:v, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
     }
   });
+  localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+today())||'0',10)||0;
 }
-function save(){ try{ localStorage.setItem(storeKey(), JSON.stringify(beds)); }catch(e){} }
+function save(){ try{ localStorage.setItem(storeKey(), JSON.stringify(beds)); }catch(e){}
+  if(!applyingRemote){ localStateAt=Date.now(); try{localStorage.setItem('ub_stateAt_'+unit+'_'+today(),String(localStateAt));}catch(e){} syncPush(); } }
+
+// ---- cross-device sync (Supabase board_state; passphrase enforced server-side by RLS header) ----
+var SB_URL="https://qbtnxkzpddexczhcvxre.supabase.co/rest/v1/board_state";
+var SB_KEY="sb_publishable_uqqWXuhGAPqd85yXC4rLsA_q7RX1zAQ";
+var syncSpace=localStorage.getItem('ub_sync_space')||'';
+var localStateAt=0, applyingRemote=false, pushTimer=null, syncTimer=null;
+function syncOn(){ return !!syncSpace; }
+function sbH(extra){ var h={apikey:SB_KEY,'x-sync-space':syncSpace,'content-type':'application/json'}; if(extra)for(var k in extra)h[k]=extra[k]; return h; }
+function setSync(txt,cls){ var e=document.getElementById('syncst'); if(e){ e.textContent=txt; e.className='syncst '+(cls||''); } }
+function syncPush(){ if(!syncOn()||applyingRemote)return; clearTimeout(pushTimer); pushTimer=setTimeout(doPush,1200); }
+function doPush(){ if(!syncOn())return; setSync('⇅ syncing…','busy');
+  var iso=new Date(localStateAt||Date.now()).toISOString();
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),body:JSON.stringify({space:syncSpace,unit:unit,date:today(),data:{beds:beds},updated_at:iso})})
+    .then(function(r){ setSync(r.ok?'⇅ synced':'⇅ sync err', r.ok?'ok':'err'); })
+    .catch(function(){ setSync('⇅ offline','err'); });
+}
+function syncPull(cb){ if(!syncOn()){cb&&cb();return;}
+  var q=SB_URL+'?select=data,updated_at&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.'+encodeURIComponent(unit)+'&date=eq.'+encodeURIComponent(today());
+  fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
+    if(rows&&rows[0]&&rows[0].data&&rows[0].data.beds){
+      var remoteAt=Date.parse(rows[0].updated_at)||0;
+      if(remoteAt>localStateAt){ applyingRemote=true; beds=rows[0].data.beds; localStateAt=remoteAt;
+        try{localStorage.setItem(storeKey(),JSON.stringify(beds));localStorage.setItem('ub_stateAt_'+unit+'_'+today(),String(localStateAt));}catch(e){}
+        applyingRemote=false; renderRail(); renderView(); }
+    }
+    setSync('⇅ synced','ok'); cb&&cb();
+  }).catch(function(){ setSync('⇅ offline','err'); cb&&cb(); });
+}
+function startSyncPoll(){ clearInterval(syncTimer); if(syncOn()) syncTimer=setInterval(function(){ syncPull(); }, 10000); }
+function syncSetup(){
+  var cur=syncSpace?'(currently ON)':'(currently OFF)';
+  var v=prompt('Cross-device Sync '+cur+'\n\nEnter your PRIVATE sync passphrase — use the SAME one on every device (PC + laptop) to share your beds live.\nMake it long & unguessable (it is your only key — no one without it can read your data).\nLeave blank + OK to turn sync OFF on this device.', syncSpace);
+  if(v===null)return;
+  syncSpace=v.trim(); try{localStorage.setItem('ub_sync_space',syncSpace);}catch(e){}
+  if(syncOn()){ setSync('⇅ syncing…','busy'); syncPull(function(){ doPush(); }); startSyncPoll(); }
+  else { setSync('sync off',''); clearInterval(syncTimer); }
+}
 
 function bedList(){ var a=[]; unitGroups(unit).forEach(function(gr){ a=a.concat(gr.beds); }); return a; }
 
