@@ -26,7 +26,7 @@
   .tabs button{font:inherit;font-weight:600;background:#2a4ea0;color:#cfe;border:0;border-radius:6px 6px 0 0;padding:6px 14px;cursor:pointer}
   .tabs button.on{background:#eef2f8;color:#1a3c8f}
   #wrap{flex:1;display:flex;min-height:0}
-  #rail{flex:0 0 246px;background:#dbe6f6;padding:8px 7px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  #rail{flex:0 0 274px;background:#dbe6f6;padding:8px 7px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
   .raillbl{font-size:10px;font-weight:800;color:#1a3c8f;text-transform:uppercase;letter-spacing:.5px;text-align:center;padding:2px 0 1px}
   .railgrp{display:flex;flex-direction:column;gap:6px;border:2px solid #9fbce8;border-radius:8px;padding:6px;background:#eaf1fb}
   .bedbtn{position:relative;display:block;width:100%;font:inherit;background:#fff;border:1px solid #b6cff0;border-radius:8px;padding:7px 8px 8px;cursor:pointer;text-align:left;color:#1a3c8f;line-height:1.25}
@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.18 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.19 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
