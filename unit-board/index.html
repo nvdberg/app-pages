@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.20 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.21 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -123,6 +123,8 @@
    (chat-Claude's `icu rounds` produces the full-judgment version). Print-CSS
    invariants (§23) are baked in and must not be removed. */
 function rsEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// visible safety cap for the flag boxes — the JSON should already be condensed (rules §23); this is the net.
+function rsCap(s,n){ s=String(s==null?'':s).replace(/\s+/g,' ').trim(); return (n&&s.length>n)?s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…':s; }
 function rsDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return isNaN(n)?'?':n; }
 function rsDate(){ var d=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear(); }
 function rsFile(){ var d=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear(); }
@@ -147,7 +149,7 @@ function rsFlagsBlock(d){
   var aro=rsFlat(d.aro); aro=aro?aro:'None';
   var alg=rsFlat(d.allergies); alg=alg?alg:'NKA';
   var gocP=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
-  var goc=gocP?((gocP.goc_status||'?')+(gocP.goc_note?' — '+gocP.goc_note:'')):'Unknown';
+  var goc=gocP?((gocP.goc_status||'?')+(gocP.goc_note?' — '+rsCap(gocP.goc_note,300):'')):'Unknown';
   var aroCls=/none|neg/i.test(aro)?'ok':'';
   var algCls=/^nka|none|nil/i.test(alg)?'ok':'warn';
   return '<div class="flags">'
