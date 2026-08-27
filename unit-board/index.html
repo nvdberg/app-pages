@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.24 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.25 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -353,6 +353,29 @@ function hvGocClass(status){
 var GOC_SHORT={R1:'Full code',R2:'No CPR',R3:'No CPR/intub · NIPPV OK',M1:'Medical + transfer',M2:'Medical · on-site only',C1:'Comfort care',C2:'Comfort · imminent'};
 function hvGocCode(status){ var m=hvClean(status).toUpperCase().match(/^(R[123]|M[12]|C[12])/); return m?m[1]:(/^FULL/.test(hvClean(status).toUpperCase())?'R1':''); }
 function hvGocShort(status){ var c=hvGocCode(status); return c?(c+' — '+GOC_SHORT[c]):hvClean(status); }
+// Transfer tag — unambiguous DIRECTION (→ leaving to / ← came from) + SPECIFIC destination + DATE. Never a bare "Transfer".
+var HV_MONc={jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec'};
+function hvTransferTag(s){
+  var sl=s.toLowerCase();
+  var dm=s.match(/\b(\d{1,2})\s?(?:st|nd|rd|th)?[-\s]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i)
+       || s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-\s]?(\d{1,2})\b/i);
+  var date=''; if(dm){ if(/^\d/.test(dm[1])) date=' · '+dm[1]+' '+HV_MONc[dm[2].toLowerCase()]; else date=' · '+dm[2]+' '+HV_MONc[dm[1].toLowerCase()]; }
+  var inbound=/\b(from|repatriat|received from|transferred? in\b|accepted from)\b/.test(sl)
+    && !/\bto\s+(the\s+)?(ward|floor|home|medicine|hospitalist|step|or|surgery|oncolog|surveillance)/.test(sl);
+  var dest;
+  if(/hospitalist/.test(sl)) dest='Hospitalist ward';
+  else if(/internal medicine|general medicine|\bmedicine\b|\bgim\b|\bim\b/.test(sl)) dest='Medicine ward';
+  else if(/surg/.test(sl)) dest='Surgery ward';
+  else if(/surveillance|\bpsu\b/.test(sl)) dest='Pasqua Surveillance';
+  else if(/oncolog|cancer/.test(sl)) dest='Oncology';
+  else if(/step[\s-]?down|\bhdu\b/.test(sl)) dest='Step-down';
+  else if(/home|discharge/.test(sl)) dest='Home';
+  else if(/\bor\b|theatre|operat/.test(sl)) dest='OR';
+  else if(/\bm?icu\b|\bsicu\b|\bpicu\b|\bccu\b|\bcsu\b/i.test(s)){ var um=s.match(/\b(m?icu|sicu|picu|ccu|csu)\b/i); dest=um?um[1].toUpperCase():'ICU'; }
+  else if(/\bward\b|\bfloor\b/.test(sl)) dest='Ward';
+  else { var mm=s.match(/(?:to|from|→|←)\s+([A-Z][A-Za-z /]{2,22})/); dest=mm?mm[1].trim():hvCap(s,22); }
+  return (inbound?'← from ':'→ ')+dest+date;
+}
 
 function bedToHandover(d, overnight){
   d=d||{};
@@ -388,17 +411,9 @@ function bedToHandover(d, overnight){
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
   var goc_text=goc?hvClean((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):'';
 
-  // tags: transfer (with destination) · M/C-level GoC alert · new · ARO
+  // tags: transfer (DIRECTION + specific destination + date) · M/C-level GoC alert · new · ARO
   var tags=[];
-  if(dispo&&dispo.dispo_summary){ var s=hvClean(dispo.dispo_summary), sl=s.toLowerCase(), t='→ Transfer';
-    if(/surveillance|\bpsu\b/.test(sl))t='→ Pasqua Surveillance';
-    else if(/oncolog/.test(sl))t='→ Oncology';
-    else if(/step[\s-]?down/.test(sl))t='→ Step-down';
-    else if(/\bward\b|\bfloor\b|medicine/.test(sl))t='→ Ward';
-    else if(/home|discharge/.test(sl))t='→ Home';
-    else if(/\bor\b|theatre|operat/.test(sl))t='→ OR';
-    else { var mm=s.match(/(?:to|→)\s+([A-Z][A-Za-z ]{2,22})/); if(mm)t='→ '+mm[1].trim(); }
-    tags.push({cls:'transfer-tag',text:t}); }
+  if(dispo&&dispo.dispo_summary){ tags.push({cls:'transfer-tag',text:hvTransferTag(hvClean(dispo.dispo_summary))}); }
   // GoC ceiling tag: M2/C1/C2 = escalation-limited → ⚠ alert; R3/M1 = a plain info chip (still active/aggressive care)
   if(/^(M2|C1|C2)/.test(gocStat)) tags.push({cls:'alert-tag',text:'⚠ '+hvGocShort(gocStat)});
   else if(/^(R3|M1)/.test(gocStat)) tags.push({cls:'goc-tag',text:hvGocShort(gocStat)});
