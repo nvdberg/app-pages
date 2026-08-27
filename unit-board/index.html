@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.19 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.20 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -131,9 +131,21 @@ function rsWarn(t){ return /^⚠|threshold|avoid|risk|allerg|airway|unsecured|bl
 function rsFlag(v){ // wrap (H)/(L) etc in colour spans
   return rsEsc(v).replace(/\((HH|LL|H|L)\)/g,function(m,g){ var c=(g[0]==='H')?'hi':'lo'; return '<span class="'+c+'">('+g+')</span>'; }); }
 
+// flatten strings / arrays / {allergen,reaction}-style objects to one display string
+function rsFlat(v){
+  if(v==null) return '';
+  if(Array.isArray(v)) return v.map(rsFlat).filter(Boolean).join(' · ');
+  if(typeof v==='object'){
+    var a=v.allergen||v.name||v.drug||v.substance||v.text||'';
+    var r=v.reaction||v.rxn||''; a=String(a).trim(); r=String(r).trim();
+    if(a) return a+(r?' ('+r+')':'');
+    return Object.keys(v).map(function(k){return v[k];}).filter(function(x){return typeof x==='string'||typeof x==='number';}).join(' ').trim();
+  }
+  return String(v).trim();
+}
 function rsFlagsBlock(d){
-  var aro=(d.aro&&String(d.aro).trim())?d.aro:'None';
-  var alg=(d.allergies&&String(d.allergies).trim())?d.allergies:'NKA';
+  var aro=rsFlat(d.aro); aro=aro?aro:'None';
+  var alg=rsFlat(d.allergies); alg=alg?alg:'NKA';
   var gocP=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
   var goc=gocP?((gocP.goc_status||'?')+(gocP.goc_note?' — '+gocP.goc_note:'')):'Unknown';
   var aroCls=/none|neg/i.test(aro)?'ok':'';
@@ -256,7 +268,7 @@ function renderRoundingSheet(d){
    +'.hdr-l h1{font-size:12.5pt;font-weight:800;line-height:1.15}.hdr-l h1 .rl{font-weight:400;font-size:8pt;color:#555;white-space:nowrap}.hdr-l .dx{font-size:9.5pt;font-weight:600;margin-top:3px;max-width:560px}'
    +'.hdr-r{text-align:right;font-size:8.2pt;color:#333;line-height:1.3}.hdr-r .date{font-size:12.5pt;font-weight:800;color:#000}.hdr-r .day{background:#000;color:#fff;padding:2px 7px;border-radius:2px;display:inline-block;margin-top:3px;font-weight:700;font-size:9.4pt}'
    +'.flags{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:5px;margin-bottom:5px;break-inside:avoid}'
-   +'.flag{border:1px solid #666;padding:4px 8px;font-size:9.6pt;background:#f5f5f5}.flag .lbl{font-size:7.6pt;text-transform:uppercase;font-weight:700;letter-spacing:.4px;color:#555;margin-bottom:2px}.flag .val{font-weight:700}'
+   +'.flag{border:1px solid #666;padding:4px 8px;font-size:9.6pt;background:#f5f5f5}.flag .lbl{display:block;font-size:7.6pt;text-transform:uppercase;font-weight:700;letter-spacing:.4px;color:#555;margin-bottom:2px}.flag .val{display:block;font-weight:700}'
    +'.flag.warn{background:#fde8e8;border-color:#b02020}.flag.warn .val{color:#b02020}.flag.ok{background:#eaf5ea;border-color:#2c7a2c}'
    +'.today{border:1.5px solid #d97706;background:#fff7e6;padding:7px 10px;margin-bottom:5px;break-inside:avoid}'
    +'.today h2{font-size:9.8pt;font-weight:800;color:#7a3f00;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}'
