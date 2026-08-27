@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.25 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.26 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -322,11 +322,13 @@ var HVCAP={ admit:95, event:210, dx:170, pmhx:170, tx:185, plan:180, goc_text:95
 function hvDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); t.setHours(0,0,0,0);
   var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?'?':n; }
 
-// Principle-10 filters: drop continuations / monitor-only / nursing routines; keep decisions + safety flags.
+// Principle-10 filters: drop continuations / monitor-only / nursing routines / standing PPO orders; keep ACTIVE decisions + safety flags.
 function hvTxKeep(l){
   if(/^\*\*/.test(l)) return true;                                             // safety flag — always keep
   if(/^\s*(continue|cont\.|ongoing|routine|standing|per protocol)\b/i.test(l)) return false;
-  if(/foley|hob\s*\d|oral care|turn q|skin care|pressure area|nursing|mouth care/i.test(l)) return false;
+  if(/foley|hob\b|head of bed|oral care|turn q|skin care|pressure area|nursing|mouth care/i.test(l)) return false;
+  // routine ICU / PPO standing orders & monitoring targets — background noise, not "what we're actively doing"
+  if(/icu mobility|mobility protocol|mobili[sz]|aspiration precaution|\bprecautions?\b|spo2 (goal|target|>|≥)|sat[s]? (goal|target)|o2 (goal|target)|map (goal|target|>|≥)|\bgoal\b|prophylax|\bvte\b|\bdvt\b|stress ulcer|\bppi\b|cam-?icu|neuro vitals?|q\d+h vitals?|bowel regimen|glycemic|insulin sliding|sliding scale/i.test(l)) return false;
   if(/^\s*(stopped|discontinued|d\/?c'?d|completed)\b/i.test(l)) return false;  // fully stopped
   return true;
 }
@@ -359,7 +361,18 @@ function hvTransferTag(s){
   var sl=s.toLowerCase();
   var dm=s.match(/\b(\d{1,2})\s?(?:st|nd|rd|th)?[-\s]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i)
        || s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-\s]?(\d{1,2})\b/i);
-  var date=''; if(dm){ if(/^\d/.test(dm[1])) date=' · '+dm[1]+' '+HV_MONc[dm[2].toLowerCase()]; else date=' · '+dm[2]+' '+HV_MONc[dm[1].toLowerCase()]; }
+  var date='';
+  if(dm){
+    var dNum, mName; if(/^\d/.test(dm[1])){ dNum=+dm[1]; mName=dm[2]; } else { dNum=+dm[2]; mName=dm[1]; }
+    var mIdx={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}[mName.toLowerCase()];
+    var now=new Date(); now.setHours(0,0,0,0);
+    var dt=new Date(now.getFullYear(), mIdx, dNum); dt.setHours(0,0,0,0);
+    if(dt-now>300*86400000) dt=new Date(now.getFullYear()-1, mIdx, dNum);   // rolled into future → last year
+    var diff=Math.round((now-dt)/86400000);
+    if(diff>=1 && diff<=120) date=' · '+diff+'d';                           // boarding / pending N days
+    else if(diff===0) date=' · today';
+    else date=' · '+dNum+' '+HV_MONc[mName.toLowerCase()];                  // future/planned → show the date
+  }
   var inbound=/\b(from|repatriat|received from|transferred? in\b|accepted from)\b/.test(sl)
     && !/\bto\s+(the\s+)?(ward|floor|home|medicine|hospitalist|step|or|surgery|oncolog|surveillance)/.test(sl);
   var dest;
@@ -397,9 +410,10 @@ function bedToHandover(d, overnight){
   }
   event=hvCap(event, HVCAP.event);
 
-  // caps tuned to fit the 67 mm cell (no item cap; char cap via HVCAP) — no silent clip
-  var dx=hvJoin(active.map(function(p){return hvClean(p.name);}), ' · ', HVCAP.dx);
-  var pmhx=hvJoin(hvLines(d.pmhx), ' · ', HVCAP.pmhx);
+  // dx = problem HEADLINES only — strip the " — descriptor" tail so names don't overflow/clip
+  var dx=hvJoin(active.map(function(p){return hvClean(p.name).replace(/\s*—.*$/,'').replace(/\s*\(.*$/,'');}), ' · ', HVCAP.dx);
+  // pmhx = the MAIN thing per comorbidity — keep dates, drop pathology/genetics minutiae. Per-item cap + first 6.
+  var pmhx=hvJoin(hvLines(d.pmhx).slice(0,6).map(function(l){return hvCap(hvClean(l), 46);}), ' · ', HVCAP.pmhx);
   var txAll=[]; active.forEach(function(p){ hvLines(p.tx).filter(hvTxKeep).forEach(function(l){txAll.push(l);}); });
   var tx=hvJoin(txAll, ' · ', HVCAP.tx);
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
@@ -409,7 +423,11 @@ function bedToHandover(d, overnight){
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
-  var goc_text=goc?hvClean((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):'';
+  // goc_text = a short PROMPT (code + what's pending/to confirm), NOT the ceiling-of-care essay (that lives in the SCM note).
+  var goc_text='';
+  if(goc){ var gs=hvGocShort(goc.goc_status)||hvClean(goc.goc_status);
+    var gn=hvClean(goc.goc_note); if(gn) gn=hvCap(gn.split(/\.\s|;\s/)[0], 58);   // first clause only, tight
+    goc_text=hvCap(gs+(gn?' — '+gn:''), HVCAP.goc_text); }
 
   // tags: transfer (DIRECTION + specific destination + date) · M/C-level GoC alert · new · ARO
   var tags=[];
