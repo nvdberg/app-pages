@@ -26,7 +26,7 @@
   .tabs button{font:inherit;font-weight:600;background:#2a4ea0;color:#cfe;border:0;border-radius:6px 6px 0 0;padding:6px 14px;cursor:pointer}
   .tabs button.on{background:#eef2f8;color:#1a3c8f}
   #wrap{flex:1;display:flex;min-height:0}
-  #rail{flex:0 0 212px;background:#dbe6f6;padding:8px 7px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+  #rail{flex:0 0 246px;background:#dbe6f6;padding:8px 7px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
   .raillbl{font-size:10px;font-weight:800;color:#1a3c8f;text-transform:uppercase;letter-spacing:.5px;text-align:center;padding:2px 0 1px}
   .railgrp{display:flex;flex-direction:column;gap:6px;border:2px solid #9fbce8;border-radius:8px;padding:6px;background:#eaf1fb}
   .bedbtn{position:relative;display:block;width:100%;font:inherit;background:#fff;border:1px solid #b6cff0;border-radius:8px;padding:7px 8px 8px;cursor:pointer;text-align:left;color:#1a3c8f;line-height:1.25}
@@ -89,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.13 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.14 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -334,44 +334,52 @@ function bedToHandover(d, overnight){
 
   var pt=hvClean(d.age_sex)+' · Day '+day;
   var admit=hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,'');
-  if(admit.length>90) admit=admit.slice(0,89)+'…';
+  if(admit.length>100) admit=admit.slice(0,99)+'…';
 
-  // event: prefer Claude's handover_line; else presentation + first hospital-course line
+  // event: prefer Claude's handover_line; else presentation + hospital-course
   var event=hvClean(d.handover_line);
   if(!event){
-    var pres=hvLines(d.presentation).slice(0,2).join(' ');
-    var hc=hvLines(d.hospital_course)[0]||'';
+    var pres=hvLines(d.presentation).slice(0,3).join(' ');
+    var hc=hvLines(d.hospital_course).slice(0,2).join(' ');
     event=hvClean(pres+(hc?' '+hc:''));
   }
-  if(event.length>200) event=event.slice(0,199)+'…';
+  if(event.length>300) event=event.slice(0,299)+'…';
 
-  var dx=hvJoin(active.map(function(p){return hvClean(p.name);}), ' · ', 150);
-  var pmhx=hvJoin(hvLines(d.pmhx).slice(0,3), ' · ', 150);
-
+  // caps raised to match real handover density (27-Aug-2026, vs the hand-authored gold sheet)
+  var dx=hvJoin(active.map(function(p){return hvClean(p.name);}), ' · ', 280);
+  var pmhx=hvJoin(hvLines(d.pmhx), ' · ', 320);          // full PMHx, no item cap
   var txAll=[]; active.forEach(function(p){ hvLines(p.tx).filter(hvTxKeep).forEach(function(l){txAll.push(l);}); });
-  var tx=hvJoin(txAll, ' · ', 150);
-
+  var tx=hvJoin(txAll, ' · ', 380);
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
   (d.tasks||[]).forEach(function(t){ if(t&&t.kind==='new')planAll.push(hvClean(t.text)); else if(t&&t.kind==='stop')planAll.push('Stop '+hvClean(t.text)); });
   if(dispo&&dispo.dispo_summary) planAll.push(hvClean(dispo.dispo_summary));
-  var plan=hvJoin(planAll, ' · ', 160);
+  var plan=hvJoin(planAll, ' · ', 230);
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
+  var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
   var goc_text=goc?hvClean((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):'';
 
-  // tags (scarcity — cap 3): transfer / new / ARO
+  // tags: transfer (with destination) · M/C-level GoC alert · new · ARO
   var tags=[];
-  if(dispo&&dispo.dispo_summary){ var s=dispo.dispo_summary.toLowerCase(), t='→ Transfer';
-    if(/step[\s-]?down/.test(s))t='→ Step-down'; else if(/ward|floor/.test(s))t='→ Ward';
-    else if(/home|discharge/.test(s))t='→ Home'; else if(/\bor\b|theatre|operat/.test(s))t='→ OR';
+  if(dispo&&dispo.dispo_summary){ var s=hvClean(dispo.dispo_summary), sl=s.toLowerCase(), t='→ Transfer';
+    if(/surveillance|\bpsu\b/.test(sl))t='→ Pasqua Surveillance';
+    else if(/oncolog/.test(sl))t='→ Oncology';
+    else if(/step[\s-]?down/.test(sl))t='→ Step-down';
+    else if(/\bward\b|\bfloor\b|medicine/.test(sl))t='→ Ward';
+    else if(/home|discharge/.test(sl))t='→ Home';
+    else if(/\bor\b|theatre|operat/.test(sl))t='→ OR';
+    else { var mm=s.match(/(?:to|→)\s+([A-Z][A-Za-z ]{2,22})/); if(mm)t='→ '+mm[1].trim(); }
     tags.push({cls:'transfer-tag',text:t}); }
+  if(/^M[12]/.test(gocStat)||/^C[12]/.test(gocStat)) tags.push({cls:'alert-tag',text:'⚠ '+gocStat+((goc&&goc.goc_note)?' — '+hvClean(goc.goc_note).slice(0,26):'')});
   if(day===1) tags.push({cls:'new-tag',text:'New Admit'});
   if(hvClean(d.aro)) tags.push({cls:'aro-tag',text:'ARO: '+hvClean(d.aro)});
 
-  // overnight: from the board's per-bed overnight box (green strip shows only when populated)
   var ovn=hvClean(overnight);
+  // alert border for beds a receiving MD should walk first: M/C-level GoC, or a ⚠ watch task
+  var hasWatch=(d.tasks||[]).some(function(t){return t&&t.kind==='watch';});
+  var alertFlag=/^M[12]/.test(gocStat)||/^C[12]/.test(gocStat)||hasWatch;
 
-  var bed={ pt:pt, goc:gocClass, alert:false, tags:tags.slice(0,3),
+  var bed={ pt:pt, goc:gocClass, alert:alertFlag, tags:tags.slice(0,3),
     admit:admit, event:event, overnight:ovn, dx:dx, pmhx:pmhx, tx:tx, goc_text:goc_text, plan:plan };
   if(ovn) bed._ovn_show=true;   // auto-reveal the green strip
   return bed;
@@ -565,7 +573,7 @@ function renderRail(){
         if(g&&g!=='UK')inner+='<span class="meta"><span class="chip">'+g+'</span></span>';
       } else if(w){ var d=w.d;
         inner+='<span class="st '+(w.state==='rounded'?'done':'pr')+'">'+(w.state==='rounded'?'✓':'PR')+'</span>';
-        inner+='<span class="idl">'+(d.age_sex?esc(d.age_sex):'&mdash;')+(d.subtitle?' · '+esc((''+d.subtitle).slice(0,22)):'')+'</span>';
+        inner+='<span class="idl">'+(d.age_sex?esc(d.age_sex):'&mdash;')+(d.subtitle?' · '+esc((''+d.subtitle).slice(0,38)):'')+'</span>';
         var meta=[]; var code=esc(d.goc_status||d.goc||''); var tc=taskCount(w); var dm=dispoMark(d);
         if(code)meta.push('<span class="chip">'+code+'</span>');
         if(tc)meta.push('<span class="chip tsk">⚑'+tc+'</span>');
