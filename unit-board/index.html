@@ -89,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.14 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.15 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -406,14 +406,38 @@ function normHvCard(c, overnight){
   return bed;
 }
 
+// pre-authored handover card baked into the bed's §10 JSON (d.handover) — the gold path.
+// Claude authored it with full context; the board only derives pt + GoC colour + overnight.
+function authoredCard(d, overnight){
+  var h=d.handover||{};
+  var day=hvDay(d.icu_admit);
+  var goc=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
+  var ovn=hvClean(overnight||h.overnight);
+  var bed={ pt:hvClean(d.age_sex)+' · Day '+day,
+    goc: h.goc || hvGocClass(goc&&goc.goc_status),
+    alert: !!h.alert,
+    tags: (h.tags||[]).slice(0,3),
+    admit: hvClean(h.admit||d.subtitle),
+    event: hvClean(h.event),
+    overnight: ovn,
+    dx: hvClean(h.dx),
+    pmhx: hvClean(h.pmhx),
+    tx: hvClean(h.tx),
+    goc_text: hvClean(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):'')),
+    plan: hvClean(h.plan) };
+  if(ovn) bed._ovn_show=true;
+  return bed;
+}
+
 function buildHandoverD(boardUnit, bedsMap){
   var cfg=hvUnitCfg(boardUnit); if(!cfg) return null;
   var beds={};
   for(var n=1;n<=cfg.n;n++){
     var w=bedsMap&&bedsMap[n];
-    beds[String(n)] = (w&&w.hvcard) ? normHvCard(w.hvcard, w.overnight)
-                    : (w&&w.d)      ? bedToHandover(w.d, w.overnight)
-                    :                 {empty:true};
+    beds[String(n)] = (w&&w.hvcard)          ? normHvCard(w.hvcard, w.overnight)   // colleague mini-card
+                    : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight)      // pre-authored (gold)
+                    : (w&&w.d)               ? bedToHandover(w.d, w.overnight)     // transform (fallback)
+                    :                          {empty:true};
   }
   return {unit:cfg.tool, beds:beds};
 }
