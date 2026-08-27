@@ -91,9 +91,9 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.23 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.24 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
-  <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
+  <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
   <div class="tabs">
     <button data-sec="daily" class="on" onclick="showSec('daily')">Daily</button>
@@ -540,6 +540,86 @@ function renderRoBar(){
 }
 function unlockDay(){ if(!confirm('Edit '+curDate()+'? Changes save to that past day and sync across your devices.'))return; readOnly=false; renderRoBar(); renderBedBar(); }
 function guardEdit(){ if(readOnly){ alert('This is a past day (read-only). Click “✏ Edit this day” in the banner to make changes.'); return false; } return true; }
+
+// ---- Entry history: every unit+date you've entered, newest first, click to jump ----
+function dmyToIso(s){ var p=String(s).split('-'); var mi=MON.indexOf(p[1]); if(mi<0)return null;
+  return p[2]+'-'+String(mi+1).padStart(2,'0')+'-'+String(+p[0]).padStart(2,'0'); }
+function collectHistory(){
+  var map={};
+  for(var i=0;i<localStorage.length;i++){
+    var k=localStorage.key(i);
+    var m=k&&k.match(/^unitboard_([A-Za-z]+)_(\d{2}-[A-Za-z]{3}-\d{4})$/);
+    if(!m)continue;
+    var iso=dmyToIso(m[2]); if(!iso)continue;
+    var n=0; try{var b=JSON.parse(localStorage.getItem(k)||'{}'); n=Object.keys(b).filter(function(x){return b[x];}).length;}catch(e){}
+    if(!n)continue;   // skip empty local shells
+    var at=parseInt(localStorage.getItem('ub_stateAt_'+m[1]+'_'+m[2])||'0',10)||0;
+    map[m[1]+'|'+m[2]]={unit:m[1],date:m[2],iso:iso,beds:n,at:at};
+  }
+  return map;
+}
+function gotoUnitDate(u,iso){
+  captureCurrentBed(); current=null;
+  var sel=document.getElementById('unitSel'); if(sel)sel.value=u; unit=u;
+  viewIso=iso; readOnly=!isTodayView();
+  document.getElementById('dateInp').value=iso;
+  document.getElementById('todayBtn').style.display=isTodayView()?'none':'inline-block';
+  beds={}; load(); renderRail(); renderRoBar();
+  setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':''); if(syncOn())syncPull();
+  showSec('daily'); closeHist();
+}
+function renderHistList(map){
+  var body=document.getElementById('histbody'); if(!body)return;
+  var items=Object.keys(map).map(function(k){return map[k];})
+    .sort(function(a,b){ if(a.iso!==b.iso)return a.iso<b.iso?1:-1; return a.unit<b.unit?-1:1; });
+  if(!items.length){ body.innerHTML='<div style="padding:24px;text-align:center;color:#889">No entries yet. As you chart beds, each unit + date shows up here.</div>'; return; }
+  var todayIso=isoToday(), rows='', lastDate='';
+  items.forEach(function(it){
+    if(it.date!==lastDate){ rows+='<div class="hdate">'+esc(it.date)+(it.iso===todayIso?' · today':'')+'</div>'; lastDate=it.date; }
+    var meta=(it.beds!=null?(it.beds+' bed'+(it.beds===1?'':'s')):'☁ synced')
+      +(it.at?' · '+new Date(it.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}):'')
+      +(it.remote&&it.beds==null?'':(it.remote?' · ☁':''));
+    rows+='<div class="hrow" onclick="gotoUnitDate(\''+it.unit+'\',\''+it.iso+'\')">'
+      +'<span class="hunit">'+esc(it.unit)+'</span><span class="hmeta">'+esc(meta)+'</span><span class="hgo">↦</span></div>';
+  });
+  body.innerHTML=rows;
+}
+function openHist(){
+  var mo=document.getElementById('histmodal');
+  if(!mo){
+    mo=document.createElement('div'); mo.id='histmodal';
+    mo.style.cssText='position:fixed;inset:0;background:rgba(10,20,40,.45);display:none;z-index:9999;align-items:flex-start;justify-content:center';
+    mo.onclick=function(e){ if(e.target===mo)closeHist(); };
+    mo.innerHTML='<div style="background:#fff;margin-top:56px;width:min(440px,92vw);max-height:78vh;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
+      +'<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:#12285e;color:#fff"><b style="flex:1">🕑 Your entries — click to open</b>'
+      +'<button onclick="closeHist()" style="background:none;border:0;color:#cfe0ff;font-size:20px;cursor:pointer;line-height:1">×</button></div>'
+      +'<div id="histbody" style="overflow:auto;padding:6px 0"></div></div>';
+    document.body.appendChild(mo);
+    var st=document.createElement('style');
+    st.textContent='#histmodal .hdate{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:#8a97a8;padding:9px 16px 3px}'
+      +'#histmodal .hrow{display:flex;align-items:center;gap:10px;padding:9px 16px;cursor:pointer;border-top:1px solid #eef2f8}'
+      +'#histmodal .hrow:hover{background:#eef4ff}'
+      +'#histmodal .hunit{font-weight:800;color:#12285e;min-width:64px}'
+      +'#histmodal .hmeta{flex:1;color:#556;font-size:12.5px}'
+      +'#histmodal .hgo{color:#2a4ea0;font-weight:800}';
+    document.head.appendChild(st);
+  }
+  var map=collectHistory();
+  renderHistList(map);
+  mo.style.display='flex';
+  if(syncOn()){
+    fetch(SB_URL+'?select=unit,date,updated_at&space=eq.'+encodeURIComponent(syncSpace)+'&limit=800',{headers:sbH()})
+      .then(function(r){return r.json();})
+      .then(function(rows){ if(!Array.isArray(rows))return;
+        rows.forEach(function(row){ var iso=dmyToIso(row.date); if(!iso)return; var key=row.unit+'|'+row.date;
+          var at=Date.parse(row.updated_at)||0;
+          if(!map[key])map[key]={unit:row.unit,date:row.date,iso:iso,beds:null,at:at,remote:true};
+          else map[key].at=Math.max(map[key].at,at); });
+        renderHistList(map);
+      }).catch(function(){});
+  }
+}
+function closeHist(){ var mo=document.getElementById('histmodal'); if(mo)mo.style.display='none'; }
 
 function taskCount(w){ if(!w||!w.d||!w.d.tasks)return 0; var done=w.taskDone||[],c=0;
   w.d.tasks.forEach(function(t,i){ if(done.indexOf(i)<0)c++; }); return c; }
