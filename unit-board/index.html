@@ -39,8 +39,10 @@
   .bedbtn .st.pr{background:#ffe6b3;color:#8a5a00}
   .bedbtn .st.done{background:#cdeccd;color:#155f2e}
   .bedbtn .st.hv{background:#dbeafe;color:#1a5aa8}
-  .bedbtn .idl{display:block;font-weight:400;font-size:10px;opacity:.85;margin-top:1px}
-  .bedbtn .idl.empty{opacity:.5;font-style:italic}
+  .bedbtn .idl{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font-weight:400;font-size:10.5px;opacity:.92;margin-top:2px;line-height:1.3;padding-right:26px}
+  .bedbtn .idl .ag{font-weight:700;color:#1a3c8f}
+  .bedbtn.cur .idl .ag{color:#fff}
+  .bedbtn .idl.empty{display:block;opacity:.5;font-style:italic;padding-right:0}
   .bedbtn .meta{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
   .bedbtn .chip{font-size:9px;font-weight:700;border-radius:4px;padding:1px 4px;background:#e6ecf7;color:#1a3c8f}
   .bedbtn .chip.tsk{background:#ffd9d9;color:#a11}
@@ -89,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.16 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.17 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -600,7 +602,7 @@ function renderRail(){
         if(g&&g!=='UK')inner+='<span class="meta"><span class="chip">'+g+'</span></span>';
       } else if(w){ var d=w.d;
         inner+='<span class="st '+(w.state==='rounded'?'done':'pr')+'">'+(w.state==='rounded'?'✓':'PR')+'</span>';
-        inner+='<span class="idl">'+(d.age_sex?esc(d.age_sex):'&mdash;')+(d.subtitle?' · '+esc((''+d.subtitle).slice(0,38)):'')+'</span>';
+        inner+='<span class="idl">'+(d.age_sex?'<span class="ag">'+esc(d.age_sex)+'</span>':'&mdash;')+(d.subtitle?' · '+esc((''+d.subtitle).slice(0,120)):'')+'</span>';
         var meta=[]; var code=esc(d.goc_status||d.goc||''); var tc=taskCount(w); var dm=dispoMark(d);
         if(code)meta.push('<span class="chip">'+code+'</span>');
         if(tc)meta.push('<span class="chip tsk">⚑'+tc+'</span>');
