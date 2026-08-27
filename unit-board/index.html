@@ -89,7 +89,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.15 · 26-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.16 · 26-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -298,6 +298,10 @@ function hvClean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
 function hvLines(v){ if(!v)return []; if(Array.isArray(v))return v.map(hvClean).filter(Boolean);
   return String(v).split(/\r?\n/).map(hvClean).filter(Boolean); }
 function hvJoin(arr, sep, cap){ var s=arr.filter(Boolean).join(sep); return cap&&s.length>cap ? s.slice(0,cap-1).replace(/[·\s]+$/,'')+'…' : s; }
+function hvCap(s, n){ s=hvClean(s); return (n&&s.length>n) ? s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…' : s; }
+// per-field caps tuned to the 67 mm handover cell — keeps content from silently clipping.
+// The JSON should already be authored within these (rules §handover); this is the visible safety net.
+var HVCAP={ admit:95, event:210, dx:170, pmhx:170, tx:185, plan:180, goc_text:95 };
 function hvDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); t.setHours(0,0,0,0);
   var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?'?':n; }
 
@@ -333,8 +337,7 @@ function bedToHandover(d, overnight){
   var active=probs.filter(function(p){return p&&!p.type&&p.name;});
 
   var pt=hvClean(d.age_sex)+' · Day '+day;
-  var admit=hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,'');
-  if(admit.length>100) admit=admit.slice(0,99)+'…';
+  var admit=hvCap(hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,''), HVCAP.admit);
 
   // event: prefer Claude's handover_line; else presentation + hospital-course
   var event=hvClean(d.handover_line);
@@ -343,17 +346,17 @@ function bedToHandover(d, overnight){
     var hc=hvLines(d.hospital_course).slice(0,2).join(' ');
     event=hvClean(pres+(hc?' '+hc:''));
   }
-  if(event.length>300) event=event.slice(0,299)+'…';
+  event=hvCap(event, HVCAP.event);
 
-  // caps raised to match real handover density (27-Aug-2026, vs the hand-authored gold sheet)
-  var dx=hvJoin(active.map(function(p){return hvClean(p.name);}), ' · ', 280);
-  var pmhx=hvJoin(hvLines(d.pmhx), ' · ', 320);          // full PMHx, no item cap
+  // caps tuned to fit the 67 mm cell (no item cap; char cap via HVCAP) — no silent clip
+  var dx=hvJoin(active.map(function(p){return hvClean(p.name);}), ' · ', HVCAP.dx);
+  var pmhx=hvJoin(hvLines(d.pmhx), ' · ', HVCAP.pmhx);
   var txAll=[]; active.forEach(function(p){ hvLines(p.tx).filter(hvTxKeep).forEach(function(l){txAll.push(l);}); });
-  var tx=hvJoin(txAll, ' · ', 380);
+  var tx=hvJoin(txAll, ' · ', HVCAP.tx);
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
   (d.tasks||[]).forEach(function(t){ if(t&&t.kind==='new')planAll.push(hvClean(t.text)); else if(t&&t.kind==='stop')planAll.push('Stop '+hvClean(t.text)); });
   if(dispo&&dispo.dispo_summary) planAll.push(hvClean(dispo.dispo_summary));
-  var plan=hvJoin(planAll, ' · ', 230);
+  var plan=hvJoin(planAll, ' · ', HVCAP.plan);
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
@@ -417,14 +420,14 @@ function authoredCard(d, overnight){
     goc: h.goc || hvGocClass(goc&&goc.goc_status),
     alert: !!h.alert,
     tags: (h.tags||[]).slice(0,3),
-    admit: hvClean(h.admit||d.subtitle),
-    event: hvClean(h.event),
+    admit: hvCap(h.admit||d.subtitle, HVCAP.admit),
+    event: hvCap(h.event, HVCAP.event),
     overnight: ovn,
-    dx: hvClean(h.dx),
-    pmhx: hvClean(h.pmhx),
-    tx: hvClean(h.tx),
-    goc_text: hvClean(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):'')),
-    plan: hvClean(h.plan) };
+    dx: hvCap(h.dx, HVCAP.dx),
+    pmhx: hvCap(h.pmhx, HVCAP.pmhx),
+    tx: hvCap(h.tx, HVCAP.tx),
+    goc_text: hvCap(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):''), HVCAP.goc_text),
+    plan: hvCap(h.plan, HVCAP.plan) };
   if(ovn) bed._ovn_show=true;
   return bed;
 }
@@ -823,14 +826,14 @@ function loadColleagueBox(){
 
 function promptsPanel(){
   var rows=[
-    ['icu daily Bed N:','Consolidate a bed’s notes into a daily SCM note (then paste the JSON here).'],
-    ['icu daily update Bed N:','Update an existing daily note.'],
-    ['icu admission Bed N:','New ICU admission note.'],
+    ['icu daily Bed N:','Consolidate a bed’s notes → daily SCM note + its handover card. Paste the JSON here.'],
+    ['icu daily update Bed N:','Update an existing daily note (re-paste to refresh the bed).'],
+    ['icu admission Bed N:','New ICU admission note (+ handover card).'],
     ['icu admission update Bed N:','Update an admission note.'],
     ['icu admission Bed unassigned:','Admission with no bed yet → Unassigned area (also accepts "pending").'],
-    ['handover bed N:','Colleague/uncharted bed → condense a note into a handover mini-JSON (hv:1). Paste into the board.'],
-    ['handover beds:','Batch: paste several notes → get a JSON array of mini-cards → one paste loads them all.'],
-    ['daily handover','Build the unit handover (or use the board Handover tab).'],
+    ['handover bed N:','A bed you did NOT chart → condense a colleague/previous-day note into a handover mini-card (hv:1).'],
+    ['handover beds:','Batch colleague beds → a JSON array of mini-cards → one paste loads them all.'],
+    ['daily handover','Chat handover render (backup). Your own beds’ handover auto-compiles here on the Handover tab.'],
     ['feedback log:','Log a mid-shift tweak/observation.'],
     ['feedback review:','Review & consolidate feedback off-shift.'],
     ['start shift: DD Mon YYYY UNIT','Open the shift anchor tab.']
