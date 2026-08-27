@@ -91,7 +91,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.26 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.27 · 27-Aug-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -551,6 +551,8 @@ function curDate(){ return viewIso===isoToday()?today():boardDate(viewIso); }
 function isTodayView(){ return viewIso===isoToday(); }
 function storeKey(){return 'unitboard_'+unit+'_'+curDate();}
 function histKey(){return 'unitboard_hist_'+unit;}
+function hovKey(){return 'ub_hov_'+unit+'_'+curDate();}
+var hovOverride=null;   // edited "v2" handover/concise for this unit+date (null = auto-generated v1)
 // ---- date / history navigation ----
 function onDatePick(){ var v=document.getElementById('dateInp').value; if(!v)return; setViewDate(v); }
 function goToday(){ setViewDate(isoToday()); }
@@ -682,7 +684,10 @@ function load(){
     }
   });
   localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+curDate())||'0',10)||0;
+  try{ var ho=localStorage.getItem(hovKey()); hovOverride=ho?JSON.parse(ho):null; }catch(e){ hovOverride=null; }
 }
+function saveHov(){ try{ if(hovOverride)localStorage.setItem(hovKey(),JSON.stringify(hovOverride)); else localStorage.removeItem(hovKey()); }catch(e){}
+  if(!applyingRemote){ localStateAt=Date.now(); try{localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));}catch(e){} syncPush(); } }
 function save(){ try{ localStorage.setItem(storeKey(), JSON.stringify(beds)); }catch(e){}
   if(!applyingRemote){ localStateAt=Date.now(); try{localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));}catch(e){} syncPush(); } }
 
@@ -697,7 +702,7 @@ function setSync(txt,cls){ var e=document.getElementById('syncst'); if(e){ e.tex
 function syncPush(){ if(!syncOn()||applyingRemote)return; clearTimeout(pushTimer); pushTimer=setTimeout(doPush,1200); }
 function doPush(){ if(!syncOn())return; setSync('⇅ syncing…','busy');
   var iso=new Date(localStateAt||Date.now()).toISOString();
-  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),body:JSON.stringify({space:syncSpace,unit:unit,date:curDate(),data:{beds:beds},updated_at:iso})})
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),body:JSON.stringify({space:syncSpace,unit:unit,date:curDate(),data:{beds:beds,hov:hovOverride||null},updated_at:iso})})
     .then(function(r){ setSync(r.ok?'⇅ synced':'⇅ sync err', r.ok?'ok':'err'); })
     .catch(function(){ setSync('⇅ offline','err'); });
 }
@@ -707,7 +712,9 @@ function syncPull(cb){ if(!syncOn()){cb&&cb();return;}
     if(rows&&rows[0]&&rows[0].data&&rows[0].data.beds){
       var remoteAt=Date.parse(rows[0].updated_at)||0;
       if(remoteAt>localStateAt){ applyingRemote=true; beds=rows[0].data.beds; localStateAt=remoteAt;
-        try{localStorage.setItem(storeKey(),JSON.stringify(beds));localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));}catch(e){}
+        hovOverride=rows[0].data.hov||null;
+        try{localStorage.setItem(storeKey(),JSON.stringify(beds));localStorage.setItem('ub_stateAt_'+unit+'_'+curDate(),String(localStateAt));
+          if(hovOverride)localStorage.setItem(hovKey(),JSON.stringify(hovOverride));else localStorage.removeItem(hovKey());}catch(e){}
         applyingRemote=false; renderRail(); renderView(); }
     }
     setSync('⇅ synced','ok'); cb&&cb();
@@ -914,7 +921,7 @@ function transferBed(n){ if(!guardEdit())return; if(!beds[n])return; var r=promp
 
 // ---- handover: gold-format render (embedded ICU-Handover-Universal) + print options + colleague paste ----
 function renderHandover(view){
-  var D=buildHandoverD(unit, beds);
+  var D=hovOverride||buildHandoverD(unit, beds);
   if(!D){
     view.innerHTML='<div class="panel"><div class="stub"><b>'+esc(unit)+'</b> is admission-only — no handover sheet. Handover is for MICU · SICU · CCU · PICU+PICUSU.</div></div>';
     return;
@@ -930,6 +937,8 @@ function renderHandover(view){
     +'<span class="grp">Margin <button class="fzb" onclick="hvAdj(\'margin\',-1)">&minus;</button><span class="val">'+hvOpts.margin+'mm</span><button class="fzb" onclick="hvAdj(\'margin\',1)">+</button></span>'
     +'<button class="sec2" onclick="hvReset()">reset</button>'
     +'<button class="sec2" onclick="hvTips()">Print tips</button>'
+    +hovBadge()
+    +'<button class="go" style="background:#1f8a4c" onclick="saveHovFromHandover()" title="Save your edits as version 2 (syncs across devices)">💾 Save as v2</button>'
     +'<button class="go prt" onclick="printHandover()">🖨 Print</button>'
     +'</div>';
   var coll='<div id="collarea"><div class="collhdr">Add a bed you didn’t chart — paste a mini-JSON / an array (from <code>handover beds:</code>, routes by bed) or a raw progress note (pick the bed):</div>'
@@ -954,6 +963,18 @@ function hvAdj(k,delta){
 function hvReset(){ hvOpts={font:1,rowmm:67,margin:7}; hvSave(); renderView(); }
 function printHandover(){ var f=document.getElementById('hvframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use the sheet’s own Print button, or Ctrl/Cmd+P inside it.');} } }
+// ---- edit → Save as v2 → revert (shared by Handover + Concise; hovOverride syncs across devices) ----
+function hovBadge(){ return hovOverride
+  ? '<span style="font-weight:800;color:#1f8a4c;background:#e4f5ea;border:1px solid #a5d9ba;border-radius:10px;padding:3px 9px">✏ v2 · your edits</span>'
+    +'<button class="sec2" onclick="revertHov()" title="Discard v2, restore the auto-generated version">↩ Revert to auto</button>' : ''; }
+function saveHovFromHandover(){ var f=document.getElementById('hvframe');
+  if(f&&f.contentWindow&&f.contentWindow.captureD){ try{ var D2=f.contentWindow.captureD(); D2.unit=unit; hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }catch(e){ alert('Could not read the edited cards — try again.'); } }
+  else alert('Handover not ready yet.'); }
+function revertHov(){ if(!confirm('Revert to the auto-generated version? Your edited v2 is discarded'+(syncOn()?' on all your devices':'')+'.'))return;
+  hovOverride=null; saveHov(); renderView(); hovFlash('Reverted to auto'); }
+function hovFlash(msg){ var d=document.createElement('div'); d.textContent=msg;
+  d.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#12285e;color:#fff;padding:9px 16px;border-radius:8px;font-weight:700;z-index:10000;box-shadow:0 6px 20px rgba(0,0,0,.3)';
+  document.body.appendChild(d); setTimeout(function(){try{d.remove();}catch(e){}},2200); }
 function hvTips(){ alert('Print settings (Chrome print dialog):\n• Paper: A4 · Portrait\n• Margins: Default\n• Scale: 100%  (NOT Fit to page)\n• Headers and footers: OFF   ← the usual top-clipping culprit\n• Background graphics: ON     ← colours + GoC badges\n\nIf cards clip at the bottom, nudge Row − or Font − in the bar above.'); }
 function loadColleagueBox(){
   if(!guardEdit())return;
@@ -985,24 +1006,22 @@ function conciseCards(D){
   // Each card: left 2/3 = concise glance · right 1/3 = blank write-in notes column (type on screen or handwrite after print).
   return Object.keys(D.beds).sort(function(a,b){return (+a)-(+b);}).map(function(k){
     var b=D.beds[k]||{};
-    var notes='<div class="cnotes"><div class="nlbl">Notes</div><div class="narea" contenteditable="true"></div></div>';
+    var notes='<div class="cnotes"><div class="nlbl">Notes</div><div class="narea" data-f="notes" contenteditable="true">'+esc(b.notes||'')+'</div></div>';
     if(b.empty){
-      return '<div class="ccard empty"><div class="cmain"><div class="chd"><span class="cbed">Bed '+k+'</span>'
+      return '<div class="ccard empty" data-bed="'+k+'"><div class="cmain"><div class="chd"><span class="cbed">Bed '+k+'</span>'
         +'<span class="cempty">— open —</span></div></div>'+notes+'</div>';
     }
     var g=GOC_META[b.goc]||GOC_META['goc-uk'];
     var dx=cCap(b.admit||b.dx,150), rx=cCap(b.tx,140), pend=cCap(b.plan,150), ovn=cCap(b.overnight,120);
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
-    var rows='<div class="crow"><span class="ck">Dx</span><span class="cv">'+(esc(dx)||'&mdash;')+'</span></div>';
-    if(ovn) rows+='<div class="crow"><span class="ck">O/N</span><span class="cv">'+esc(ovn)+'</span></div>';
-    if(rx)  rows+='<div class="crow"><span class="ck">Rx</span><span class="cv">'+esc(rx)+'</span></div>';
-    if(pend)rows+='<div class="crow"><span class="ck">Pend</span><span class="cv">'+esc(pend)+'</span></div>';
+    function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
+    var rows=crow('admit','Dx',dx)+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
     var main='<div class="cmain">'
       +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(b.pt||'')+'</span>'
       +'<span class="cchip" style="background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span></div>'
       +rows+(flags?'<div class="cflags">'+flags+'</div>':'')+'</div>';
-    return '<div class="ccard'+(b.alert?' alert':'')+'" style="border-left-color:'+g.bar+'">'+main+notes+'</div>';
+    return '<div class="ccard'+(b.alert?' alert':'')+'" data-bed="'+k+'" style="border-left-color:'+g.bar+'">'+main+notes+'</div>';
   });
 }
 function buildConciseHTML(D){
@@ -1025,6 +1044,8 @@ function buildConciseHTML(D){
     +'.crow{display:flex;gap:7px;font-size:11px;line-height:1.32;margin-top:1px}'
     +'.ck{flex:0 0 30px;font-weight:800;color:#8a97a8;text-transform:uppercase;font-size:8.5px;letter-spacing:.4px;padding-top:2px}'
     +'.cv{flex:1;color:#1a2233}'
+    +'.cv[contenteditable]:empty:before{content:"—";color:#cfd6e0}'
+    +'.cv[contenteditable]:focus,.narea:focus{background:#eef4ff;outline:1px solid #b9cdf0;border-radius:3px}'
     +'.cflags{margin-top:4px}'
     +'.cflag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:3px;display:inline-block}'
     +'.alert-tag{background:#fde3cf;color:#a5480a;border:1px solid #e8a06a}'
@@ -1032,19 +1053,21 @@ function buildConciseHTML(D){
     +'.transfer-tag{background:#dcefe1;color:#1b7a37;border:1px solid #93c9a5}'
     +'.new-tag{background:#d8e8fb;color:#1a4b8f;border:1px solid #93b8e3}'
     +'@page{size:A4 portrait;margin:8mm}'
-    +'@media print{body{background:#fff;padding:0}.ccard{border-color:#999}.cnotes{border-left-color:#999}}'
+    +'@media print{body{background:#fff;padding:0}.ccard{border-color:#999}.cnotes{border-left-color:#999}.cv:empty:before{content:""}}'
     +'</style>';
   var body=cards.length?('<div class="clist">'+cards.join('')+'</div>')
     :'<div style="padding:30px;text-align:center;color:#667">No beds.</div>';
   return '<!doctype html><html><head><meta charset="utf-8">'+css+'</head><body>'+body+'</body></html>';
 }
 function renderConcise(view){
-  var D=buildHandoverD(unit, beds);
+  var D=hovOverride||buildHandoverD(unit, beds);
   if(!D){ view.innerHTML='<div class="panel"><div class="stub"><b>'+esc(unit)+'</b> is admission-only — no concise sheet. Concise handover is for MICU · SICU · CCU · PICU+PICUSU.</div></div>'; return; }
   var occ=Object.keys(D.beds).filter(function(k){return !D.beds[k].empty;}).length;
   var bar='<div id="hvbar">'
-    +'<b>Concise handover — '+esc(unit)+' · '+today()+'</b> <span style="color:#667">'+occ+' occupied · 5-sec glance</span>'
+    +'<b>Concise handover — '+esc(unit)+' · '+today()+'</b> <span style="color:#667">'+occ+' occupied · click any field to edit</span>'
     +'<span class="hvsp"></span>'
+    +hovBadge()
+    +'<button class="go" style="background:#1f8a4c" onclick="saveHovFromConcise()" title="Save your edits + notes as version 2 (syncs across devices)">💾 Save as v2</button>'
     +'<button class="sec2" onclick="hvTips()">Print tips</button>'
     +'<button class="go prt" onclick="printConcise()">🖨 Print</button>'
     +'</div>';
@@ -1054,6 +1077,24 @@ function renderConcise(view){
 }
 function printConcise(){ var f=document.getElementById('cframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use Ctrl/Cmd+P inside the sheet.');} } }
+function captureConciseD(){
+  var f=document.getElementById('cframe'); if(!f||!f.contentDocument) return null;
+  var base=hovOverride?JSON.parse(JSON.stringify(hovOverride)):buildHandoverD(unit,beds);
+  if(!base) return null;
+  f.contentDocument.querySelectorAll('.ccard[data-bed]').forEach(function(card){
+    var k=card.getAttribute('data-bed'); if(!k) return;
+    var bd=base.beds[k]||(base.beds[k]={});
+    card.querySelectorAll('[data-f]').forEach(function(el){
+      var fld=el.getAttribute('data-f'); var val=(el.textContent||'').replace(/\s+/g,' ').trim();
+      if(fld==='notes'){ if(val)bd.notes=val; else delete bd.notes; }
+      else if(!bd.empty){ bd[fld]=val; }   // Dx→admit · O/N→overnight · Rx→tx · Pend→plan
+    });
+  });
+  base.unit=unit; return base;
+}
+function saveHovFromConcise(){ var D2=captureConciseD();
+  if(D2){ hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }
+  else alert('Concise not ready yet.'); }
 
 function promptsPanel(){
   var rows=[
