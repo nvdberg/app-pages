@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.28 · 27-Aug-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.29 · 02-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -800,9 +800,13 @@ function renderBedBar(){
     '<span class="chips">'+chips+'</span>'+
     '<span class="spacer"></span>'+
     provChip(d)+
+    '<button class="sec" onclick="clearGenerated()" title="Discard the generated SCM note for this bed (patient data stays) — then regenerate">↻ Clear note</button>'+
     '<button class="sec" onclick="newAdmission(\''+current+'\')" title="Archive this note & start a new patient here">＋ New pt</button>'+
     '<button class="sec" onclick="transferBed(\''+current+'\')" title="Transfer/discharge: archive note & clear">⇥ Transfer / DC</button>';
 }
+function clearGenerated(){ if(!guardEdit())return; if(current==null||!beds[current])return;
+  if(!confirm('Clear the generated note for '+(/^U/.test(String(current))?'this patient':'Bed '+current)+'?\n\nThe patient data stays — only the previously generated SCM block is cleared, so you can regenerate it fresh.'))return;
+  delete beds[current]._scm; save(); renderView(); hovFlash('Generated note cleared — regenerate in the tool'); }
 // provenance chip — which Claude authored this bed + when. Board-only metadata (d._meta); NEVER part of the SCM note.
 function provChip(d){
   var m=d&&d._meta; if(!m||(!m.model&&!m.emitted)) return '';
@@ -835,7 +839,7 @@ function routeEntry(d){ // slot one parsed object into its bed; returns {ok,bed}
     beds[key]={ d:hv?null:d, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[], unassigned:true };
     return {ok:true, bed:key, hv:hv};
   }
-  if(beds[n]){ if(hv){beds[n].hvcard=d;} else {beds[n].d=d; beds[n].hvcard=null;} }
+  if(beds[n]){ if(hv){beds[n].hvcard=d;} else {beds[n].d=d; beds[n].hvcard=null; delete beds[n]._scm;} }  // re-paste replaces data → drop the stale generated note
   else { beds[n]={ d:hv?null:d, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[] }; }
   return {ok:true, bed:n, hv:hv};
 }
@@ -855,11 +859,14 @@ function loadPaste(){
   if(!guardEdit())return;
   var t=document.getElementById('pjson').value.trim();
   if(!t){ document.getElementById('msg').textContent='Paste a bed JSON (or an array) first.'; return; }
-  var res=loadJSONText(t);
+  captureCurrentBed();                 // persist whatever's open BEFORE the paste overwrites bed data…
+  var res=loadJSONText(t);             // …then routeEntry replaces beds[n].d with the fresh paste (+ clears stale _scm)
   if(res.loaded===undefined) return;
   document.getElementById('pjson').value='';
   renderRail();
-  if(res.loaded.length===1 && section==='daily') openBed(res.loaded[0]); else renderView();
+  // NB: set current + render directly — do NOT call openBed() here, its captureCurrentBed() would clobber the fresh paste
+  if(res.loaded.length===1 && section==='daily'){ current=res.loaded[0]; setTab('daily'); renderRail(); renderView(); }
+  else renderView();
 }
 
 function setTab(s){ document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.sec===s); }); }
