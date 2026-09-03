@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.29 · 02-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.30 · 02-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -669,12 +669,14 @@ function dispoMark(d){ if(!d)return ''; var s=''; (d.problems||[]).forEach(funct
 function init(){
   var sel=document.getElementById('unitSel');
   Object.keys(UNITS).forEach(function(u){var o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o);});
+  try{ var lu=localStorage.getItem('ub_last_unit'); if(lu&&UNITS[lu])unit=lu; }catch(e){}   // reopen on the last unit you used
+  sel.value=unit;
   document.getElementById('dateInp').value=viewIso; renderRoBar();
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
   if(syncOn()){ syncPull(); startSyncPoll(); }
 }
-function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
+function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; try{localStorage.setItem('ub_last_unit',unit);}catch(e){} beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
 
 function load(){
   try{ var raw=localStorage.getItem(storeKey()); beds=raw?JSON.parse(raw):{}; }catch(e){ beds={}; }
