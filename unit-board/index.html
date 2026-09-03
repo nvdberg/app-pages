@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.30 · 02-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.31 · 02-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1122,8 +1122,9 @@ function promptsPanel(){
     ['icu admission Bed unassigned:','Admission with no bed yet → Unassigned area (also accepts "pending").'],
     ['handover bed N:','A bed you did NOT chart → condense a colleague/previous-day note into a handover mini-card (hv:1).'],
     ['handover beds:','Batch colleague beds → a JSON array of mini-cards → one paste loads them all.'],
-    ['daily handover','Chat handover render (backup). Your own beds’ handover auto-compiles here on the Handover tab.'],
+    ['(tab) Handover','Your handover — auto-compiles from every bed you entered. No prompt, no paste. This is the primary handover; just open the tab.'],
     ['(tab) Concise','5-second-glance handover — Dx · overnight · Rx · pending · flags + SMOST GoC chip. Same data, bare bones. No paste — builds from the beds.'],
+    ['daily handover','⚠ Fallback only (board unavailable). Handover lives on the Handover tab above — don’t prompt this unless every bed is in one chat.'],
     ['feedback log:','Log a mid-shift tweak/observation.'],
     ['feedback review:','Review & consolidate feedback off-shift.'],
     ['start shift: DD Mon YYYY UNIT','Open the shift anchor tab.']
