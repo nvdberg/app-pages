@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.31 · 02-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.32 · 03-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -127,9 +127,10 @@
 function rsEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // visible safety cap for the flag boxes — the JSON should already be condensed (rules §23); this is the net.
 function rsCap(s,n){ s=String(s==null?'':s).replace(/\s+/g,' ').trim(); return (n&&s.length>n)?s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…':s; }
-function rsDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return isNaN(n)?'?':n; }
-function rsDate(){ var d=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear(); }
-function rsFile(){ var d=new Date(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear(); }
+function rsShiftNow(){ var d=new Date(); if(d.getHours()<8)d.setDate(d.getDate()-1); return d; }   // 08:00→08:00 shift date
+function rsDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=rsShiftNow(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return isNaN(n)?'?':n; }
+function rsDate(){ var d=rsShiftNow(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return d.getDate()+' '+m[d.getMonth()]+' '+d.getFullYear(); }
+function rsFile(){ var d=rsShiftNow(),m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear(); }
 function rsLines(v){ if(!v)return []; if(Array.isArray(v))return v.filter(function(x){return x!=null&&String(x).trim();}); return String(v).split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean); }
 function rsWarn(t){ return /^⚠|threshold|avoid|risk|allerg|airway|unsecured|bleed|deteriorat|watch/i.test(t); }
 function rsFlag(v){ // wrap (H)/(L) etc in colour spans
@@ -320,7 +321,7 @@ function hvCap(s, n){ s=hvClean(s); return (n&&s.length>n) ? s.slice(0,n-1).repl
 // per-field caps tuned to the 67 mm handover cell — keeps content from silently clipping.
 // The JSON should already be authored within these (rules §handover); this is the visible safety net.
 var HVCAP={ admit:95, event:210, dx:170, pmhx:170, tx:185, plan:180, goc_text:95 };
-function hvDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); t.setHours(0,0,0,0);
+function hvDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); if(t.getHours()<8)t.setDate(t.getDate()-1); t.setHours(0,0,0,0);  // 08:00 shift boundary
   var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?'?':n; }
 
 // Principle-10 filters: drop continuations / monitor-only / nursing routines / standing PPO orders; keep ACTIVE decisions + safety flags.
@@ -544,8 +545,10 @@ function bd(n){ return beds[n]?beds[n].d:null; }               // the D (schema)
 function mintStay(){ return 's'+Date.now().toString(36)+Math.floor(Math.random()*1e4).toString(36); }
 function fz(d){ fontScale=Math.max(0.9,Math.min(2.0, Math.round((fontScale+d)*100)/100)); try{localStorage.setItem('ub_fontscale',fontScale);}catch(e){} renderView(); }
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-function today(){var d=new Date();return String(d.getDate()).padStart(2,'0')+'-'+MON[d.getMonth()]+'-'+d.getFullYear();}
-function isoToday(){var d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+var SHIFT_START_HR=8;   // shifts run 08:00 → 08:00; a time before 08:00 still belongs to YESTERDAY's shift
+function shiftNow(){ var d=new Date(); if(d.getHours()<SHIFT_START_HR)d.setDate(d.getDate()-1); return d; }   // the current shift's calendar date
+function today(){var d=shiftNow();return String(d.getDate()).padStart(2,'0')+'-'+MON[d.getMonth()]+'-'+d.getFullYear();}
+function isoToday(){var d=shiftNow();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function boardDate(iso){var p=String(iso).split('-');return p[2]+'-'+MON[(+p[1])-1]+'-'+p[0];}   // YYYY-MM-DD -> DD-Mon-YYYY
 var viewIso=isoToday(), readOnly=false;
 function curDate(){ return viewIso===isoToday()?today():boardDate(viewIso); }
@@ -911,7 +914,14 @@ function captureCurrentBed(){
   if(current==null||!beds[current]||!beds[current].d||readOnly)return;
   try{
     var ifr=document.querySelector('#view iframe'); if(!ifr)return;
-    if(ifr.contentWindow&&typeof ifr.contentWindow.captureToD==='function'){ var ed=ifr.contentWindow.captureToD(); if(ed&&ed.bed!=null)beds[current].d=ed; }
+    if(ifr.contentWindow&&typeof ifr.contentWindow.captureToD==='function'){ var ed=ifr.contentWindow.captureToD();
+      if(ed&&ed.bed!=null){
+        var o=beds[current].d;
+        // if you actually edited the structured content, the pre-authored handover card is now stale → drop it so Handover/Concise re-derive from your edit
+        var changed=JSON.stringify([o.problems,o.pmhx,o.subtitle,o.diagnoses,o.vitals,o.aro])!==JSON.stringify([ed.problems,ed.pmhx,ed.subtitle,ed.diagnoses,ed.vitals,ed.aro]);
+        if(changed){ delete ed.handover; delete ed.handover_line; }
+        beds[current].d=ed;
+      } }
     var doc=ifr.contentDocument;
     if(doc){ var s=doc.getElementById('scm'), p=doc.getElementById('sp'); if(s&&p&&p.style.display==='block'&&(s.textContent||'').trim())beds[current]._scm=s.textContent; }
     save();
@@ -1115,13 +1125,13 @@ function saveHovFromConcise(){ var D2=captureConciseD();
 
 function promptsPanel(){
   var rows=[
-    ['icu daily Bed N:','Consolidate a bed’s notes → daily SCM note + its handover card. Paste the JSON here.'],
+    ['icu daily Bed N:','YOUR beds (you charted them) → full daily SCM note + rich card. Paste the JSON here.'],
     ['icu daily update Bed N:','Update an existing daily note (re-paste to refresh the bed).'],
     ['icu admission Bed N:','New ICU admission note (+ handover card).'],
     ['icu admission update Bed N:','Update an admission note.'],
     ['icu admission Bed unassigned:','Admission with no bed yet → Unassigned area (also accepts "pending").'],
-    ['handover bed N:','A bed you did NOT chart → condense a colleague/previous-day note into a handover mini-card (hv:1).'],
-    ['handover beds:','Batch colleague beds → a JSON array of mini-cards → one paste loads them all.'],
+    ['handover bed N:','COLLEAGUE bed you did NOT chart → the FAST path: one condensed full-quality card (hv:1), no full note. Paste JSON → appears on Handover tab.'],
+    ['handover beds:','Several colleague beds at once → ONE JSON array → ONE paste loads them all. The quick way to cover a colleague’s whole list.'],
     ['(tab) Handover','Your handover — auto-compiles from every bed you entered. No prompt, no paste. This is the primary handover; just open the tab.'],
     ['(tab) Concise','5-second-glance handover — Dx · overnight · Rx · pending · flags + SMOST GoC chip. Same data, bare bones. No paste — builds from the beds.'],
     ['daily handover','⚠ Fallback only (board unavailable). Handover lives on the Handover tab above — don’t prompt this unless every bed is in one chat.'],
