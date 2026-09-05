@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.35 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.36 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1058,7 +1058,7 @@ function conciseCards(D){
         +'<span class="cempty">— open —</span></div></div>'+notes+'</div>';
     }
     var g=GOC_META[b.goc]||GOC_META['goc-uk'];
-    var dx=cCap(b.admit||b.dx,150), rx=cCap(b.tx,140), pend=cCap(b.plan,150), ovn=cCap(b.overnight,120);
+    var dx=cCap(b.admit||b.dx), rx=cCap(b.tx), pend=cCap(b.plan), ovn=cCap(b.overnight);  // no char cap — full text wraps to new lines (glance stays scannable, nothing clipped)
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
     function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
