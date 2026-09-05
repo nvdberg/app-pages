@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.44 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.45 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -341,15 +341,17 @@ function hvLines(v){ if(!v)return []; if(Array.isArray(v))return v.map(hvClean).
 // Surfaces the vessels+stents into the working-dx headline (esp. CCU) without needing a regenerate.
 function hvProc(d){
   var src=hvLines(d.hospital_course).concat(hvLines(d.presentation)).concat((d.problems||[]).map(function(p){return (p&&p.context)||'';}));
-  var line=src.filter(function(l){return /\b(pci|stent|\bdes\b|angioplast|drug-elut|cath lab)/i.test(l);})[0];
+  // require an ACTUAL stent mention (not just "PCI"/"POBA"/"cath") to avoid false positives (SCAD-POBA, cath-pending)
+  var line=src.filter(function(l){return /\b(des|stent|drug[- ]?elut)/i.test(l);})[0];
   if(!line) return '';
-  var vessels=(line.match(/\b(LMCA|left main|LAD|LCx|Cx|RCA|pRCA|dRCA|PDA|PLV|OM\d?|D\d|diagonal|SVG|LIMA|ramus)\b/gi)||[])
-    .map(function(v){ v=v.toUpperCase(); if(v==='LEFT MAIN')v='LMCA'; return v.replace(/^[PD]RCA$/,'RCA'); });
-  vessels=vessels.filter(function(v,i){return vessels.indexOf(v)===i;});          // unique, keep order
-  var cnt=(line.match(/\bdes\b/gi)||[]).length || (line.match(/\bstent/gi)||[]).length;
+  // only vessels sitting within ~22 chars of a stent token — excludes vessels named in disease descriptions (e.g. "3VD")
+  var vessels=[], vre=/\b(LMCA|LAD|LCx|Cx|RCA|pRCA|dRCA|PDA|PLV|OM\d?|D[12]|ramus)\b/gi, m;
+  while((m=vre.exec(line))){ var i=m.index, ctx=line.slice(Math.max(0,i-22), i+m[0].length+22);
+    if(/\b(des|stent|drug[- ]?elut)\b/i.test(ctx)){ var v=m[0].toUpperCase().replace(/^[PD]RCA$/,'RCA'); if(vessels.indexOf(v)<0)vessels.push(v); } }
+  var cnt=(line.match(/\b(des|drug[- ]?elut(?:ing)?\s*stent|stent)\b/gi)||[]).length;
   var word=/\bbms\b/i.test(line)?'BMS':'DES';
-  var verb=/pci|stent|angioplast|des|drug-elut/i.test(line)?'PCI':'Cath';
-  return (verb+(cnt?' '+cnt+' '+word:'')+(vessels.length?' '+vessels.slice(0,3).join('/'):'')).trim();
+  if(!vessels.length && !cnt) return '';
+  return ('PCI'+(cnt?' '+cnt+' '+word:'')+(vessels.length?' '+vessels.slice(0,3).join('/'):'')).trim();
 }
 function hvJoin(arr, sep, cap){ var s=arr.filter(Boolean).join(sep); return cap&&s.length>cap ? s.slice(0,cap-1).replace(/[·\s]+$/,'')+'…' : s; }
 function hvCap(s, n){ s=hvClean(s); return (n&&s.length>n) ? s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…' : s; }
