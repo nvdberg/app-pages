@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.42 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.43 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1051,8 +1051,10 @@ var GOC_META={
   'goc-uk':  {code:'?', lbl:'GoC unknown',      bg:'#eceff1',fg:'#54606b',bar:'#90a4ae'}
 };
 function cCap(s,n){ s=(''+(s==null?'':s)).replace(/\s+/g,' ').trim(); return (n&&s.length>n)?s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…':s; }
-// concise: keep the first N COMPLETE ` · ` items (never cut mid-sentence); flag the rest with "+K more".
-function cFit(s,n){ s=(''+(s==null?'':s)).replace(/\s+/g,' ').trim(); if(!s)return ''; var p=s.split(' · '); return p.slice(0,n).join(' · ')+(p.length>n?' · +'+(p.length-n)+' more':''); }
+// concise: previous density (char budget) but truncate ONLY at a complete ` · ` item — never mid-sentence. Trailing "…" if more.
+function cFit(s,max){ s=(''+(s==null?'':s)).replace(/\s+/g,' ').trim(); if(!s)return ''; var p=s.split(' · '); var out=[],len=0;
+  for(var i=0;i<p.length;i++){ if(out.length&&len+3+p[i].length>max)break; out.push(p[i]); len+=p[i].length+3; }
+  return out.join(' · ')+(out.length<p.length?' …':''); }
 function conciseCards(D){
   // ALL beds, positional (bed-number) order — empty beds keep their place as light placeholders.
   // Each card: left 2/3 = concise glance · right 1/3 = blank write-in notes column (type on screen or handwrite after print).
@@ -1064,7 +1066,7 @@ function conciseCards(D){
         +'<span class="cempty">— open —</span></div></div>'+notes+'</div>';
     }
     var g=GOC_META[b.goc]||GOC_META['goc-uk'];
-    var dx=cFit(b.admit||b.dx,3), rx=cFit(b.tx,3), pend=cFit(b.plan,4), ovn=cCap(b.overnight);  // first few COMPLETE items — concise, never cut mid-sentence
+    var dx=cFit(b.admit||b.dx,170), rx=cFit(b.tx,185), pend=cFit(b.plan,180), ovn=cCap(b.overnight,120);  // previous density, clean item-boundary cut (no mid-sentence)
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
     function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
