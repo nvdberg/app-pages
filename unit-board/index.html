@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.36 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.37 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -100,7 +100,9 @@
     <button data-sec="daily" class="on" onclick="showSec('daily')">Daily</button>
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
     <button data-sec="concise" onclick="showSec('concise')">Concise</button>
+    <button data-sec="angela" id="angtab" onclick="showSec('angela')" hidden>Angela</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
+    <label id="anglbl" style="display:flex;align-items:center;gap:3px;margin-left:6px;font-size:11px;color:#cfe0ff;cursor:pointer" title="Angela handover — engineer-style terse view with status boxes"><input type="checkbox" id="angchk" onchange="toggleAngela()" style="cursor:pointer"> 🔬 Angela</label>
   </div>
   <span style="display:flex;gap:3px;align-items:center;margin-left:8px" title="Text size"><button class="fzb" onclick="fz(-0.08)">A&minus;</button><button class="fzb" onclick="fz(0.08)">A+</button></span>
 </header>
@@ -693,6 +695,7 @@ function init(){
   Object.keys(UNITS).forEach(function(u){var o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o);});
   try{ var lu=localStorage.getItem('ub_last_unit'); if(lu&&UNITS[lu])unit=lu; }catch(e){}   // reopen on the last unit you used
   sel.value=unit;
+  var ac=document.getElementById('angchk'); if(ac){ ac.checked=angOn(); document.getElementById('angtab').hidden=!angOn(); }
   document.getElementById('dateInp').value=viewIso; renderRoBar();
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
@@ -925,6 +928,7 @@ function renderView(){
     }
   } else if(section==='handover'){ renderHandover(view); }
   else if(section==='concise'){ renderConcise(view); }
+  else if(section==='angela'){ renderAngela(view); }
   else if(section==='prompts'){ view.innerHTML=promptsPanel(); }
   renderBedBar();
 }
@@ -1141,6 +1145,82 @@ function captureConciseD(){
 function saveHovFromConcise(){ var D2=captureConciseD();
   if(D2){ hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }
   else alert('Concise not ready yet.'); }
+
+// ---- 🔬 Angela handover: engineer-terse, one concept per line, two-cell status boxes ----
+// Box = [ordered? , result-back?].  ◼◻ ordered/awaiting · ◼◼ ordered+result · ◻◻ not ordered yet.  Toggle via header checkbox.
+function angOn(){ try{ return localStorage.getItem('ub_angela')!=='0'; }catch(e){ return true; } }
+function toggleAngela(){ var on=document.getElementById('angchk').checked; try{localStorage.setItem('ub_angela',on?'1':'0');}catch(e){}
+  document.getElementById('angtab').hidden=!on; if(!on&&section==='angela')showSec('concise'); }
+function angClean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
+function angLines(v){ if(!v)return []; if(Array.isArray(v))return v.map(angClean).filter(Boolean); return String(v).split(/\r?\n/).map(angClean).filter(Boolean); }
+function angBox(state){ var c1=(state==='pending'||state==='done')?'o':'', c2=(state==='done')?'r':'';
+  var tt=state==='done'?'ordered + result back':(state==='todo'?'not ordered yet':'ordered · awaiting result');
+  return '<span class="abox" title="'+tt+'"><i class="'+c1+'"></i><i class="'+c2+'"></i></span>'; }
+function angClassify(t){ t=String(t).toLowerCase();
+  if(/\b(order|re-?order|consult|refer|book|arrange|request|obtain|schedule|to be done|plan to|will order|for review)\b/.test(t)) return 'todo';
+  return 'pending'; }  // default: something being chased = ordered, awaiting
+function angTxKeep(l){ var t=l.toLowerCase(); if(/^\*\*/.test(t))return true;
+  return !/^\s*(continue|cont\.|ongoing|routine|standing|nursing|hob\b|oral care|per protocol)\b/.test(t); }
+function angIsPend(l){ return /await|chase|pending|repeat|recheck|trend|\border\b|consult|refer|book|arrange|obtain|f\/u|follow|\bwean|extubat|discharg|transfer|\bstart|\bstop|d\/?c\b|titrat|repeat|review|for /i.test(l); }
+function buildAngelaHTML(D){
+  var order=Object.keys(D.beds).sort(function(a,b){return (+a)-(+b);});
+  var rows=order.map(function(k){
+    var b=D.beds[k]||{}, w=beds[k], d=(w&&w.d)?w.d:null;
+    var g=GOC_META[b.goc]||GOC_META['goc-uk'];
+    if(b.empty||!d){ return '<div class="acard empty" style="border-left-color:'+g.bar+'"><div class="ah"><span class="abd">Bed '+k+'</span><span class="aopen">'+(b.empty?'— open —':'handover-only')+'</span></div></div>'; }
+    var active=(d.problems||[]).filter(function(p){return p&&p.name&&p.type!=='goc'&&p.type!=='dispo';});
+    var dispo=(d.problems||[]).filter(function(p){return p&&p.type==='dispo';})[0];
+    var dx=active.map(function(p){return angClean(p.name).replace(/\s*—.*$/,'');});
+    var doing=[]; active.forEach(function(p){ angLines(p.tx).filter(angTxKeep).forEach(function(l){doing.push(l);}); });
+    var pend=[]; active.forEach(function(p){ angLines(p.plan).forEach(function(l){ if(angIsPend(l))pend.push({text:l,st:angClassify(l)}); }); });
+    (d.tasks||[]).forEach(function(t){ if(t&&t.text)pend.push({text:angClean(t.text),st:(t.kind==='new'?'todo':'pending')}); });
+    if(dispo&&dispo.dispo_summary)pend.push({text:angClean(dispo.dispo_summary),st:'pending'});
+    var hx=angLines(d.pmhx);
+    var key=[]; active.forEach(function(p){ (p.key_labs||[]).forEach(function(kl){ if(kl&&(kl.label||kl.v))key.push(angClean((kl.label||'')+(kl.v?' '+kl.v:''))); }); });
+    function sec(lbl,arr,boxed){ if(!arr.length)return '';
+      var items=arr.map(function(it){ var txt=(typeof it==='object')?it.text:it;
+        return '<div class="ai">'+(boxed?angBox(it.st||'pending'):'')+'<span>'+esc(txt)+'</span></div>'; }).join('');
+      return '<div class="arow"><span class="al">'+lbl+'</span><div class="av">'+items+'</div></div>'; }
+    var body=sec('Dx',dx,false)+sec('Doing',doing,false)+sec('Pend',pend,true)+sec('Hx',hx,false)+sec('Key',key,false);
+    return '<div class="acard'+(b.alert?' alert':'')+'" style="border-left-color:'+g.bar+'">'
+      +'<div class="ah"><span class="abd">Bed '+k+'</span><span class="apt">'+esc(b.pt||'')+'</span>'
+      +'<span class="achip" style="background:'+g.bg+';color:'+g.fg+'" title="'+esc(g.lbl)+'">'+g.code+'</span></div>'+body+'</div>';
+  });
+  var css='<style>*{box-sizing:border-box}body{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:#12213f;background:#f4f7fc;padding:9px;font-size:11.5px}'
+    +'.leg{display:flex;gap:14px;align-items:center;font-size:10px;color:#556;margin-bottom:8px;flex-wrap:wrap}'
+    +'.leg .abox{margin-right:4px}'
+    +'.alist{display:flex;flex-direction:column;gap:6px}'
+    +'.acard{border:1px solid #cbd5e6;border-left:6px solid #90a4ae;border-radius:6px;background:#fff;padding:6px 10px;break-inside:avoid;page-break-inside:avoid}'
+    +'.acard.empty{background:#fbfcfe;border-left-color:#d3dced;padding:4px 10px}'
+    +'.acard.alert{box-shadow:inset 3px 0 0 #d9342b}'
+    +'.ah{display:flex;align-items:baseline;gap:8px;margin-bottom:3px;border-bottom:1px solid #eef2f8;padding-bottom:3px}'
+    +'.abd{font-weight:800;font-size:13.5px;color:#12213f;white-space:nowrap}'
+    +'.apt{font-size:11px;color:#3a4657;font-weight:600}.aopen{font-size:10.5px;color:#9aa7b8}'
+    +'.achip{margin-left:auto;font-size:11px;font-weight:800;padding:1px 8px;border-radius:9px;white-space:nowrap}'
+    +'.arow{display:flex;gap:8px;margin-top:2px;line-height:1.4;align-items:flex-start}'
+    +'.al{flex:0 0 40px;font-weight:800;color:#98a4b4;text-transform:uppercase;font-size:9px;letter-spacing:.5px;padding-top:2px}'
+    +'.av{flex:1;min-width:0}.ai{display:flex;align-items:flex-start;gap:1px}.ai span{flex:1}'
+    +'.abox{display:inline-flex;gap:2px;flex:0 0 auto;margin-right:6px;margin-top:2px}'
+    +'.abox i{width:9px;height:9px;border-radius:2px;border:1.3px solid #9aa7b8;display:inline-block;background:#fff}'
+    +'.abox i.o{background:#2a4ea0;border-color:#2a4ea0}.abox i.r{background:#2c9a48;border-color:#2c9a48}'
+    +'@page{size:A4 portrait;margin:8mm}@media print{body{background:#fff;padding:0}.acard{border-color:#999}}'
+    +'</style>';
+  var legend='<div class="leg"><b style="color:#12213f">Status:</b>'
+    +'<span>'+angBox('pending')+'ordered · awaiting</span>'
+    +'<span>'+angBox('done')+'ordered + result</span>'
+    +'<span>'+angBox('todo')+'not ordered</span></div>';
+  return '<!doctype html><html><head><meta charset="utf-8">'+css+'</head><body>'+legend+'<div class="alist">'+rows.join('')+'</div></body></html>';
+}
+function renderAngela(view){
+  var D=buildHandoverD(unit,beds);
+  if(!D){ view.innerHTML='<div class="panel"><div class="stub"><b>'+esc(unit)+'</b> — no Angela handover (MICU · SICU · CCU · PICU only).</div></div>'; return; }
+  var occ=Object.keys(D.beds).filter(function(k){return !D.beds[k].empty;}).length;
+  var bar='<div id="hvbar"><b>🔬 Angela handover — '+esc(unit)+' · '+today()+'</b> <span style="color:#667">'+occ+' occupied · engineer view (experimental — will tune to her real style)</span>'
+    +'<span class="hvsp"></span><button class="sec2" onclick="hvTips()">Print tips</button><button class="go prt" onclick="printAngela()">🖨 Print</button></div>';
+  view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div id="hvview"></div></div>';
+  var f=document.createElement('iframe'); f.id='aframe'; f.srcdoc=buildAngelaHTML(D); document.getElementById('hvview').appendChild(f);
+}
+function printAngela(){ var f=document.getElementById('aframe'); if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use Ctrl/Cmd+P inside the sheet.');} } }
 
 function promptsPanel(){
   var rows=[
