@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.38 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.39 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1161,6 +1161,9 @@ function angClassify(t){ t=String(t).toLowerCase();
   return 'pending'; }  // default: something being chased = ordered, awaiting
 function angTxKeep(l){ var t=l.toLowerCase(); if(/^\*\*/.test(t))return true;
   return !/^\s*(continue|cont\.|ongoing|routine|standing|nursing|hob\b|oral care|per protocol)\b/.test(t); }
+// Angela DOING = big-picture only: procedures, devices, drips, anticoag/abx/steroids, escalation, and changes — NOT the routine oral med list.
+function angBigPic(l){ var t=l.toLowerCase(); if(/^\*\*/.test(l))return true;
+  return /\biv\b|infus|drip|gtt|pressor|noradren|epineph|vaso|dobutam|milrin|levosim|heparin|enoxap|tinzap|warfarin|apixab|rivarox|dabig|anticoag|thromboly|\btnk\b|tpa|lysis|\bpci\b|poba|stent|\bcabg\b|drain|pigtail|chest tube|thoracent|pericardio|intubat|\bvent\b|nippv|bipap|hfnc|optiflow|high[- ]?flow|crrt|dialys|pace|iabp|ecmo|balloon|cardiovert|ablat|transfus|steroid|dexameth|antibiotic|\babx\b|mero|pip[- ]?tazo|ceftri|vanco|azithro|dapt\b|dual antiplatel|insulin (infus|drip|sliding? off)|\bheld\b|stopped|d\/?c'?d|\bnew\b|switch|convert|escalat|wean/i.test(t); }
 function angIsPend(l){ return /await|chase|pending|repeat|recheck|trend|\border\b|consult|refer|book|arrange|obtain|f\/u|follow|\bwean|extubat|discharg|transfer|\bstart|\bstop|d\/?c\b|titrat|repeat|review|for /i.test(l); }
 function buildAngelaHTML(D){
   var order=Object.keys(D.beds).sort(function(a,b){return (+a)-(+b);});
@@ -1171,12 +1174,14 @@ function buildAngelaHTML(D){
     var active=(d.problems||[]).filter(function(p){return p&&p.name&&p.type!=='goc'&&p.type!=='dispo';});
     var dispo=(d.problems||[]).filter(function(p){return p&&p.type==='dispo';})[0];
     var dx=active.map(function(p){return angClean(p.name).replace(/\s*—.*$/,'');});
-    var doing=[]; active.forEach(function(p){ angLines(p.tx).filter(angTxKeep).forEach(function(l){doing.push(l);}); });
+    var doing=[]; active.forEach(function(p){ angLines(p.tx).filter(angBigPic).forEach(function(l){doing.push(l);}); });
     var pend=[]; active.forEach(function(p){ angLines(p.plan).forEach(function(l){ if(angIsPend(l))pend.push({text:l,st:angClassify(l)}); }); });
     (d.tasks||[]).forEach(function(t){ if(t&&t.text)pend.push({text:angClean(t.text),st:(t.kind==='new'?'todo':'pending')}); });
     if(dispo&&dispo.dispo_summary)pend.push({text:angClean(dispo.dispo_summary),st:'pending'});
     var hx=angLines(d.pmhx);
     var key=[]; active.forEach(function(p){ (p.key_labs||[]).forEach(function(kl){ if(kl&&(kl.label||kl.v))key.push(angClean((kl.label||'')+(kl.v?' '+kl.v:''))); }); });
+    // Angela = the MOST minimal view (shorter than Concise): cap every section hard.
+    dx=dx.slice(0,4); doing=doing.slice(0,3); pend=pend.slice(0,5); hx=hx.slice(0,3); key=key.slice(0,4);
     function sec(lbl,arr,boxed){ if(!arr.length)return '';
       var items=arr.map(function(it){ var txt=(typeof it==='object')?it.text:it;
         return '<div class="ai">'+(boxed?angBox(it.st||'pending'):'')+'<span>'+esc(txt)+'</span></div>'; }).join('');
