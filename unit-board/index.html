@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.34 · 03-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.35 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -417,7 +417,7 @@ function bedToHandover(d, overnight){
   var probs=(d.problems||[]);
   var goc=probs.filter(function(p){return p&&p.type==='goc';})[0];
   var dispo=probs.filter(function(p){return p&&p.type==='dispo';})[0];
-  var active=probs.filter(function(p){return p&&!p.type&&p.name;});
+  var active=probs.filter(function(p){return p&&p.name&&p.type!=='goc'&&p.type!=='dispo';});  // regular problems = anything not goc/dispo (robust to type:"problem" that captureToD stamps on edit)
 
   var pt=hvClean(d.age_sex)+' · Day '+day;
   var admit=hvCap(hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,''), HVCAP.admit);
