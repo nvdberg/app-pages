@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.39 · 05-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.40 · 05-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -413,8 +413,8 @@ function hvTransferTag(s){
   return (inbound?'← from ':'→ ')+dest+date;
 }
 
-function bedToHandover(d, overnight){
-  d=d||{};
+function bedToHandover(d, overnight, uncap){
+  d=d||{}; var CAP=uncap?{}:HVCAP;   // uncap:true (Concise view) → no field caps, full text wraps
   var day=hvDay(d.icu_admit);
   var probs=(d.problems||[]);
   var goc=probs.filter(function(p){return p&&p.type==='goc';})[0];
@@ -422,7 +422,7 @@ function bedToHandover(d, overnight){
   var active=probs.filter(function(p){return p&&p.name&&p.type!=='goc'&&p.type!=='dispo';});  // regular problems = anything not goc/dispo (robust to type:"problem" that captureToD stamps on edit)
 
   var pt=hvClean(d.age_sex)+' · Day '+day;
-  var admit=hvCap(hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,''), HVCAP.admit);
+  var admit=hvCap(hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,''), CAP.admit);
 
   // event: prefer Claude's handover_line; else presentation + hospital-course
   var event=hvClean(d.handover_line);
@@ -431,18 +431,18 @@ function bedToHandover(d, overnight){
     var hc=hvLines(d.hospital_course).slice(0,2).join(' ');
     event=hvClean(pres+(hc?' '+hc:''));
   }
-  event=hvCap(event, HVCAP.event);
+  event=hvCap(event, CAP.event);
 
   // dx = problem HEADLINES only — strip the " — descriptor" tail so names don't overflow/clip
-  var dx=hvJoin(active.map(function(p){return hvClean(p.name).replace(/\s*—.*$/,'').replace(/\s*\(.*$/,'');}), ' · ', HVCAP.dx);
+  var dx=hvJoin(active.map(function(p){return hvClean(p.name).replace(/\s*—.*$/,'').replace(/\s*\(.*$/,'');}), ' · ', CAP.dx);
   // pmhx = the MAIN thing per comorbidity — keep dates, drop pathology/genetics minutiae. Per-item cap + first 6.
-  var pmhx=hvJoin(hvLines(d.pmhx).slice(0,6).map(function(l){return hvCap(hvClean(l), 46);}), ' · ', HVCAP.pmhx);
+  var pmhx=hvJoin(hvLines(d.pmhx).slice(0,uncap?99:6).map(function(l){return hvCap(hvClean(l), uncap?0:46);}), ' · ', CAP.pmhx);
   var txAll=[]; active.forEach(function(p){ hvLines(p.tx).filter(hvTxKeep).forEach(function(l){txAll.push(l);}); });
-  var tx=hvJoin(txAll, ' · ', HVCAP.tx);
+  var tx=hvJoin(txAll, ' · ', CAP.tx);
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
   (d.tasks||[]).forEach(function(t){ if(t&&t.kind==='new')planAll.push(hvClean(t.text)); else if(t&&t.kind==='stop')planAll.push('Stop '+hvClean(t.text)); });
   if(dispo&&dispo.dispo_summary) planAll.push(hvClean(dispo.dispo_summary));
-  var plan=hvJoin(planAll, ' · ', HVCAP.plan);
+  var plan=hvJoin(planAll, ' · ', CAP.plan);
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
@@ -450,7 +450,7 @@ function bedToHandover(d, overnight){
   var goc_text='';
   if(goc){ var gs=hvGocShort(goc.goc_status)||hvClean(goc.goc_status);
     var gn=hvClean(goc.goc_note); if(gn) gn=hvCap(gn.split(/\.\s|;\s/)[0], 58);   // first clause only, tight
-    goc_text=hvCap(gs+(gn?' — '+gn:''), HVCAP.goc_text); }
+    goc_text=hvCap(gs+(gn?' — '+gn:''), CAP.goc_text); }
 
   // tags: transfer (DIRECTION + specific destination + date) · M/C-level GoC alert · new · ARO
   var tags=[];
@@ -495,8 +495,8 @@ function normHvCard(c, overnight){
 
 // pre-authored handover card baked into the bed's §10 JSON (d.handover) — the gold path.
 // Claude authored it with full context; the board only derives pt + GoC colour + overnight.
-function authoredCard(d, overnight){
-  var h=d.handover||{};
+function authoredCard(d, overnight, uncap){
+  var h=d.handover||{}; var CAP=uncap?{}:HVCAP;
   var day=hvDay(d.icu_admit);
   var goc=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
   var ovn=hvClean(overnight||h.overnight);
@@ -504,26 +504,26 @@ function authoredCard(d, overnight){
     goc: h.goc || hvGocClass(goc&&goc.goc_status),
     alert: !!h.alert,
     tags: (h.tags||[]).slice(0,3),
-    admit: hvCap(h.admit||d.subtitle, HVCAP.admit),
-    event: hvCap(h.event, HVCAP.event),
+    admit: hvCap(h.admit||d.subtitle, CAP.admit),
+    event: hvCap(h.event, CAP.event),
     overnight: ovn,
-    dx: hvCap(h.dx, HVCAP.dx),
-    pmhx: hvCap(h.pmhx, HVCAP.pmhx),
-    tx: hvCap(h.tx, HVCAP.tx),
-    goc_text: hvCap(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):''), HVCAP.goc_text),
-    plan: hvCap(h.plan, HVCAP.plan) };
+    dx: hvCap(h.dx, CAP.dx),
+    pmhx: hvCap(h.pmhx, CAP.pmhx),
+    tx: hvCap(h.tx, CAP.tx),
+    goc_text: hvCap(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):''), CAP.goc_text),
+    plan: hvCap(h.plan, CAP.plan) };
   if(ovn) bed._ovn_show=true;
   return bed;
 }
 
-function buildHandoverD(boardUnit, bedsMap){
+function buildHandoverD(boardUnit, bedsMap, uncap){
   var cfg=hvUnitCfg(boardUnit); if(!cfg) return null;
   var beds={};
   for(var n=1;n<=cfg.n;n++){
     var w=bedsMap&&bedsMap[n];
-    beds[String(n)] = (w&&w.hvcard)          ? normHvCard(w.hvcard, w.overnight)   // colleague mini-card
-                    : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight)      // pre-authored (gold)
-                    : (w&&w.d)               ? bedToHandover(w.d, w.overnight)     // transform (fallback)
+    beds[String(n)] = (w&&w.hvcard)          ? normHvCard(w.hvcard, w.overnight)       // colleague mini-card
+                    : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight, uncap)   // pre-authored (gold)
+                    : (w&&w.d)               ? bedToHandover(w.d, w.overnight, uncap)  // transform (fallback)
                     :                          {empty:true};
   }
   return {unit:cfg.tool, beds:beds};
@@ -1110,7 +1110,7 @@ function buildConciseHTML(D){
   return '<!doctype html><html><head><meta charset="utf-8">'+css+'</head><body>'+body+'</body></html>';
 }
 function renderConcise(view){
-  var D=hovOverride||buildHandoverD(unit, beds);
+  var D=hovOverride||buildHandoverD(unit, beds, true);   // uncapped — full text wraps, no "…" cut-offs
   if(!D){ view.innerHTML='<div class="panel"><div class="stub"><b>'+esc(unit)+'</b> is admission-only — no concise sheet. Concise handover is for MICU · SICU · CCU · PICU+PICUSU.</div></div>'; return; }
   var occ=Object.keys(D.beds).filter(function(k){return !D.beds[k].empty;}).length;
   var bar='<div id="hvbar">'
@@ -1129,7 +1129,7 @@ function printConcise(){ var f=document.getElementById('cframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use Ctrl/Cmd+P inside the sheet.');} } }
 function captureConciseD(){
   var f=document.getElementById('cframe'); if(!f||!f.contentDocument) return null;
-  var base=hovOverride?JSON.parse(JSON.stringify(hovOverride)):buildHandoverD(unit,beds);
+  var base=hovOverride?JSON.parse(JSON.stringify(hovOverride)):buildHandoverD(unit,beds,true);
   if(!base) return null;
   f.contentDocument.querySelectorAll('.ccard[data-bed]').forEach(function(card){
     var k=card.getAttribute('data-bed'); if(!k) return;
@@ -1148,7 +1148,7 @@ function saveHovFromConcise(){ var D2=captureConciseD();
 
 // ---- 🔬 Angela handover: engineer-terse, one concept per line, two-cell status boxes ----
 // Box = [ordered? , result-back?].  ◼◻ ordered/awaiting · ◼◼ ordered+result · ◻◻ not ordered yet.  Toggle via header checkbox.
-function angOn(){ try{ return localStorage.getItem('ub_angela')!=='0'; }catch(e){ return true; } }
+function angOn(){ try{ return localStorage.getItem('ub_angela')==='1'; }catch(e){ return false; } }  // default OFF (disabled 5-Sep; re-enable via the 🔬 Angela checkbox)
 function toggleAngela(){ var on=document.getElementById('angchk').checked; try{localStorage.setItem('ub_angela',on?'1':'0');}catch(e){}
   document.getElementById('angtab').hidden=!on; if(!on&&section==='angela')showSec('concise'); }
 function angClean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
