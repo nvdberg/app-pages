@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.46 · 06-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.47 · 06-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1297,11 +1297,11 @@ function renderReference(view){
      +'#refbody ul{margin:4px 0 10px;padding-left:22px}#refbody li{margin:3px 0;line-height:1.4}#refbody a{color:#1a73e8}#refbody code{background:#eef2f8;padding:1px 4px;border-radius:3px;font-size:12px}'
      +'#refbody .rstub{color:#889;padding:30px;text-align:center}';
     document.head.appendChild(st); }
+  window._refBySys=function(){ var g={}; REFDATA.forEach(function(r){ (g[r.system]=g[r.system]||[]).push(r); }); return g; };
+  window._refSYS=SYS;
   refRenderList('');
   var body=document.getElementById('refbody');
   body.innerHTML='<div class="rstub">← Pick a condition, or search. Each is an AI-compiled checklist from a reputable society guideline — <b>verify before clinical use</b>.</div>';
-  function bySys(){ var g={}; REFDATA.forEach(function(r){ (g[r.system]=g[r.system]||[]).push(r); }); return g; }
-  window._refBySys=bySys; window._refSYS=SYS;
 }
 function refRenderList(q){
   var list=document.getElementById('reflist'); if(!list)return;
