@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.49 · 07-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.50 · 07-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1006,6 +1006,7 @@ function renderHandover(view){
     +'<span class="grp">Row <button class="fzb" onclick="hvAdj(\'rowmm\',-2)">&minus;</button><span class="val">'+hvOpts.rowmm+'mm</span><button class="fzb" onclick="hvAdj(\'rowmm\',2)">+</button></span>'
     +'<span class="grp">Margin <button class="fzb" onclick="hvAdj(\'margin\',-1)">&minus;</button><span class="val">'+hvOpts.margin+'mm</span><button class="fzb" onclick="hvAdj(\'margin\',1)">+</button></span>'
     +'<button class="sec2" onclick="hvReset()">reset</button>'
+    +consumeDateBar()
     +'<button class="sec2" onclick="hvTips()">Print tips</button>'
     +hovBadge()
     +'<button class="go" style="background:#1f8a4c" onclick="saveHovFromHandover()" title="Save your edits as version 2 (syncs across devices)">💾 Save as v2</button>'
@@ -1022,7 +1023,9 @@ function renderHandover(view){
     +'@page{size:A4 portrait;margin:'+hvOpts.margin+'mm 3mm}'
     +'.bed-card,.notes-cell-content{height:'+hvOpts.rowmm+'mm!important;max-height:'+hvOpts.rowmm+'mm!important}'
     +'</style></head>';
-  var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(D)+';');
+  // cascade the consumption-date offset onto day-counters before injecting into the handover tool
+  var Dh=hvDayOffset ? (function(){ var c=JSON.parse(JSON.stringify(D)); Object.keys(c.beds).forEach(function(k){ var b=c.beds[k]; if(b&&!b.empty){ if(b.pt)b.pt=refShiftPtDay(b.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(b[f])b[f]=refShiftText(b[f]); }); } }); return c; })() : D;
+  var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(Dh)+';');
   f.srcdoc=html; host.appendChild(f);
 }
 function hvAdj(k,delta){
@@ -1075,6 +1078,23 @@ function cCap(s,n){ s=(''+(s==null?'':s)).replace(/\s+/g,' ').trim(); return (n&
 function cFit(s,max){ s=(''+(s==null?'':s)).replace(/\s+/g,' ').trim(); if(!s)return ''; var p=s.split(' · '); var out=[],len=0;
   for(var i=0;i<p.length;i++){ if(out.length&&len+3+p[i].length>max)break; out.push(p[i]); len+=p[i].length+3; }
   return out.join(' · ')+(out.length<p.length?' …':''); }
+// ---- Handover "consumption date" offset (feedback 7-Sep): handover is read the AM AFTER the shift → default +1 ----
+// The stepper shifts every DAY-COUNTER by hvDayOffset (ICU Day, POD, abx D3/8, vent/CRRT/ECMO day). Dated event lines (DD Mon) are untouched.
+var hvDayOffset=(function(){ try{ var v=parseInt(localStorage.getItem('ub_hvdayoff'),10); return isNaN(v)?1:v; }catch(e){ return 1; } })();
+function setDayOffset(delta){ hvDayOffset=Math.max(0,Math.min(7,hvDayOffset+delta)); try{localStorage.setItem('ub_hvdayoff',String(hvDayOffset));}catch(e){} renderView(); }
+function refDayShift(n){ var x=parseInt(n,10); return isNaN(x)?n:(x+hvDayOffset); }
+// increment only CLEARLY-LABELED day counters — never generic "day N" in prose, never dated (DD Mon) lines
+function refShiftText(s){ if(s==null||!hvDayOffset) return s; s=''+s;
+  s=s.replace(/\bD(\d+)(\/\d+\b)/g,function(m,a,b){return 'D'+(+a+hvDayOffset)+b;});                 // antibiotic day  D3/8 → D4/8
+  s=s.replace(/\bPOD ?(\d+)/gi,function(m,a){return 'POD '+(+a+hvDayOffset);});                       // POD n
+  s=s.replace(/\b(vent|crrt|cvvh|ecmo|hd)\b(\s*day\s*|\s+)(\d+)/gi,function(m,w,mid,a){return w+mid+(+a+hvDayOffset);}); // device day
+  return s; }
+function refShiftPtDay(pt){ return hvDayOffset ? String(pt).replace(/· Day (\d+)/,function(m,a){return '· Day '+(+a+hvDayOffset);}) : pt; }
+function dayOffLabel(){ return hvDayOffset===0?'shift date':('shift+'+hvDayOffset); }
+function consumeDateBar(){ // the header stepper shown on Handover + Concise
+  return '<span class="grp" title="Handover is read the morning AFTER the shift — counters shift by this many days (ICU Day, POD, abx day, vent/CRRT/ECMO). Dated event lines are untouched.">Read on '
+    +'<button class="fzb" onclick="setDayOffset(-1)">&minus;</button><span class="val">'+dayOffLabel()+'</span><button class="fzb" onclick="setDayOffset(1)">+</button></span>'; }
+
 function conciseCards(D){
   // ALL beds, positional (bed-number) order — empty beds keep their place as light placeholders.
   // Each card: left 2/3 = concise glance · right 1/3 = blank write-in notes column (type on screen or handwrite after print).
@@ -1086,13 +1106,16 @@ function conciseCards(D){
         +'<span class="cempty">— open —</span></div></div>'+notes+'</div>';
     }
     var g=GOC_META[b.goc]||GOC_META['goc-uk'];
-    var dx=cFit(b.admit||b.dx,170), rx=cFit(b.tx,185), pend=cFit(b.plan,180), ovn=cCap(b.overnight,120);  // previous density, clean item-boundary cut (no mid-sentence)
+    var dx=cFit(refShiftText(b.admit||b.dx),170), rx=cFit(refShiftText(b.tx),185), pend=cFit(refShiftText(b.plan),180), ovn=cCap(b.overnight,120);  // day-counters cascaded by the consumption-date offset
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
     function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
-    var rows=crow('admit','Dx',dx)+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
+    // Surg row (SICU/CSU post-op) — procedure + POD from the bed's §10 data; only shows when a procedure is present (never an empty row)
+    var _d=(beds[k]&&beds[k].d)?beds[k].d:null;
+    var _surg=''; if(_d&&_d.procedure){ var pd=(_d.pod!=null&&_d.pod!=='')?' · POD '+(refDayShift(_d.pod)):''; _surg=cFit(hvClean?hvClean(_d.procedure):(''+_d.procedure),120)+pd; }
+    var rows=crow('admit','Dx',dx)+(_surg?crow('surg','Surg',_surg):'')+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
     var main='<div class="cmain">'
-      +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(b.pt||'')+'</span>'
+      +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(refShiftPtDay(b.pt||''))+'</span>'
       +'<span class="cchip" style="background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span></div>'
       +rows+(flags?'<div class="cflags">'+flags+'</div>':'')+'</div>';
     return '<div class="ccard'+(b.alert?' alert':'')+'" data-bed="'+k+'" style="border-left-color:'+g.bar+'">'+main+notes+'</div>';
@@ -1140,6 +1163,7 @@ function renderConcise(view){
   var bar='<div id="hvbar">'
     +'<b>Concise handover — '+esc(unit)+' · '+today()+'</b> <span style="color:#667">'+occ+' occupied · click any field to edit</span>'
     +'<span class="hvsp"></span>'
+    +consumeDateBar()
     +hovBadge()
     +'<button class="go" style="background:#1f8a4c" onclick="saveHovFromConcise()" title="Save your edits + notes as version 2 (syncs across devices)">💾 Save as v2</button>'
     +'<button class="sec2" onclick="hvTips()">Print tips</button>'
