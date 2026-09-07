@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.48 · 07-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.49 · 07-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1265,16 +1265,29 @@ function refMd(md){
   var lines=md.split(/\r?\n/), out=[], inList=false, inBq=false;
   function closeList(){ if(inList){out.push('</ul>');inList=false;} }
   function closeBq(){ if(inBq){out.push('</blockquote>');inBq=false;} }
-  lines.forEach(function(l){
-    if(/^\s*$/.test(l)){ closeList(); closeBq(); return; }
-    if(/^>\s?/.test(l)){ if(!inBq){out.push('<blockquote>');inBq=true;} out.push(inline(l.replace(/^>\s?/,''))+'<br>'); return; }
+  var isRow=function(s){ return /^\s*\|.*\|\s*$/.test(s); };
+  var cells=function(s){ return s.replace(/^\s*\|/,'').replace(/\|\s*$/,'').split('|').map(function(c){return c.trim();}); };
+  for(var i=0;i<lines.length;i++){
+    var l=lines[i];
+    // markdown table: a pipe-row followed by a |---|--- separator row
+    if(isRow(l) && i+1<lines.length && /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i+1]) && lines[i+1].indexOf('-')>=0){
+      closeList(); closeBq();
+      var head=cells(l); i+=2; var body=[];
+      while(i<lines.length && isRow(lines[i])){ body.push(cells(lines[i])); i++; }
+      i--;
+      var t='<table class="reftbl"><thead><tr>'+head.map(function(c){return '<th>'+inline(c)+'</th>';}).join('')+'</tr></thead><tbody>';
+      body.forEach(function(r){ t+='<tr>'+r.map(function(c){return '<td>'+inline(c)+'</td>';}).join('')+'</tr>'; });
+      out.push(t+'</tbody></table>'); continue;
+    }
+    if(/^\s*$/.test(l)){ closeList(); closeBq(); continue; }
+    if(/^>\s?/.test(l)){ if(!inBq){out.push('<blockquote>');inBq=true;} out.push(inline(l.replace(/^>\s?/,''))+'<br>'); continue; }
     closeBq();
     var h=l.match(/^(#{1,4})\s+(.*)/);
-    if(h){ closeList(); var lv=h[1].length; out.push('<h'+lv+'>'+inline(h[2])+'</h'+lv+'>'); return; }
+    if(h){ closeList(); var lv=h[1].length; out.push('<h'+lv+'>'+inline(h[2])+'</h'+lv+'>'); continue; }
     var li=l.match(/^\s*[-*]\s+(?:\[[ x]\]\s+)?(.*)/);
-    if(li){ if(!inList){out.push('<ul>');inList=true;} out.push('<li>'+inline(li[1])+'</li>'); return; }
+    if(li){ if(!inList){out.push('<ul>');inList=true;} out.push('<li>'+inline(li[1])+'</li>'); continue; }
     closeList(); out.push('<p>'+inline(l)+'</p>');
-  });
+  }
   closeList(); closeBq(); return out.join('\n');
 }
 function renderReference(view){
@@ -1295,7 +1308,11 @@ function renderReference(view){
      +'#refbody h1{font-size:19px;color:#12285e;margin:0 0 6px}#refbody h2{font-size:14px;color:#1a3c8f;margin:16px 0 5px;border-bottom:1px solid #e7eef9;padding-bottom:3px}'
      +'#refbody blockquote{background:#fff8ec;border-left:4px solid #e0b020;margin:0 0 12px;padding:8px 12px;font-size:12px;color:#7a5a00;border-radius:0 6px 6px 0}'
      +'#refbody ul{margin:4px 0 10px;padding-left:22px}#refbody li{margin:3px 0;line-height:1.4}#refbody a{color:#1a73e8}#refbody code{background:#eef2f8;padding:1px 4px;border-radius:3px;font-size:12px}'
-     +'#refbody .rstub{color:#889;padding:30px;text-align:center}';
+     +'#refbody .rstub{color:#889;padding:30px;text-align:center}'
+     +'#refbody table.reftbl{border-collapse:collapse;margin:8px 0 12px;font-size:12.5px;width:100%}'
+     +'#refbody table.reftbl th{background:#eef2f8;text-align:left;padding:5px 8px;border:1px solid #cbd5e6;font-weight:700;color:#12285e}'
+     +'#refbody table.reftbl td{padding:5px 8px;border:1px solid #dbe3ef;vertical-align:top}'
+     +'#refbody table.reftbl tr:nth-child(even) td{background:#f8fafd}';
     document.head.appendChild(st); }
   window._refBySys=function(){ var g={}; REFDATA.forEach(function(r){ (g[r.system]=g[r.system]||[]).push(r); }); return g; };
   window._refSYS=SYS;
