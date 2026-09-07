@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.50 · 07-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.51 · 07-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1084,10 +1084,12 @@ var hvDayOffset=(function(){ try{ var v=parseInt(localStorage.getItem('ub_hvdayo
 function setDayOffset(delta){ hvDayOffset=Math.max(0,Math.min(7,hvDayOffset+delta)); try{localStorage.setItem('ub_hvdayoff',String(hvDayOffset));}catch(e){} renderView(); }
 function refDayShift(n){ var x=parseInt(n,10); return isNaN(x)?n:(x+hvDayOffset); }
 // increment only CLEARLY-LABELED day counters — never generic "day N" in prose, never dated (DD Mon) lines
-function refShiftText(s){ if(s==null||!hvDayOffset) return s; s=''+s;
-  s=s.replace(/\bD(\d+)(\/\d+\b)/g,function(m,a,b){return 'D'+(+a+hvDayOffset)+b;});                 // antibiotic day  D3/8 → D4/8
-  s=s.replace(/\bPOD ?(\d+)/gi,function(m,a){return 'POD '+(+a+hvDayOffset);});                       // POD n
-  s=s.replace(/\b(vent|crrt|cvvh|ecmo|hd)\b(\s*day\s*|\s+)(\d+)/gi,function(m,w,mid,a){return w+mid+(+a+hvDayOffset);}); // device day
+function refShiftText(s){ if(s==null||!hvDayOffset) return s; s=''+s; var off=hvDayOffset;
+  var bump=function(re){ s=s.replace(re,function(m,pre,a){return pre+(+a+off);}); };
+  bump(/\b(D)(\d+)(?=\/\d)/g);                                                          // antibiotic  D3/8 → D4/8 (first # only)
+  bump(/\b(POD ?)(\d+)/gi);                                                             // POD n
+  bump(/\b((?:vent|crrt|cvvh|cvvhdf|ecmo|iabp|impella|hd)\s+day\s+)(\d+)/gi);           // CRRT day 3
+  bump(/\b((?:vent|crrt|cvvh|cvvhdf|ecmo|iabp|impella)\s*D)(\d+)\b/gi);                 // CRRT D3 / vent D4
   return s; }
 function refShiftPtDay(pt){ return hvDayOffset ? String(pt).replace(/· Day (\d+)/,function(m,a){return '· Day '+(+a+hvDayOffset);}) : pt; }
 function dayOffLabel(){ return hvDayOffset===0?'shift date':('shift+'+hvDayOffset); }
