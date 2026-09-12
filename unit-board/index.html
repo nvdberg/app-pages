@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.57 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.58 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1051,8 +1051,8 @@ function isHvCard(d){ // a Claude-condensed handover mini-card
 function nextUnassignedKey(){ var i=1; while(beds['U'+i])i++; return 'U'+i; }
 function routeEntry(d){ // slot one parsed object into its bed; returns {ok,bed} or {ok:false,err}
   if(!d||typeof d!=='object'||Array.isArray(d)) return {ok:false,err:'not an object'};
-  // PREP draft (§27) → Park store, regardless of current unit (cross-unit staging)
-  if(d.prep===true){ var pid=parkAdd(d); return {ok:true, bed:pid, park:true}; }
+  // PREP draft (§27) → Park store, regardless of current unit (cross-unit staging). Never a live daily bed.
+  if(d.prep===true || d.note_type==='prep'){ var pid=parkAdd(d); return {ok:true, bed:pid, park:true}; }
   // Rapid Response → timestamped worklist entry (consult/code/admission all kept UNDER RR, never auto-routed to a unit)
   if(isRR()){
     var ts=(d.ts&&Date.parse(d.ts))?d.ts:new Date().toISOString();
@@ -1571,7 +1571,10 @@ function rrStyle(){ if(document.getElementById('rrstyle'))return;
    +'.parkwrap{max-width:900px;margin:4px auto}.parkitem{background:#fff;border:1px solid #cbd5e6;border-radius:8px;padding:11px 14px;margin:8px 0;display:flex;gap:12px;align-items:flex-start}'
    +'.parkitem .pi-main{flex:1;min-width:0}.parkitem .pi-u{display:inline-block;font-size:10px;font-weight:800;background:#12285e;color:#fff;border-radius:4px;padding:1px 7px;margin-right:6px}'
    +'.parkitem .pi-sub{font-size:13.5px;color:#12213f;font-weight:600}.parkitem .pi-meta{font-size:11px;color:#889;margin-top:2px}.parkitem .pi-btns{display:flex;gap:6px;flex-wrap:wrap}'
-   +'.parkitem button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:5px 10px;cursor:pointer}.parkitem .act{background:#1f8a4c;color:#fff}.parkitem .cpy{background:#1a73e8;color:#fff}.parkitem .del{background:#f3f4f7;color:#933}';
+   +'.parkitem button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:5px 10px;cursor:pointer}.parkitem .act{background:#1f8a4c;color:#fff}.parkitem .cpy{background:#1a73e8;color:#fff}.parkitem .del{background:#f3f4f7;color:#933}'
+   +'.pi-sum{margin-top:7px;border-top:1px solid #eef2f8;padding-top:6px}.pi-line{font-size:12.5px;line-height:1.45;margin:2px 0;color:#26324a}'
+   +'.pi-lbl{display:inline-block;min-width:70px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#8a97a8;margin-right:6px;vertical-align:top}'
+   +'.pi-goc{font-size:10px;font-weight:800;background:#eef2ff;color:#12285e;border-radius:4px;padding:0 5px}';
   document.head.appendChild(st); }
 function rrGet(k){ return (beds[k]&&beds[k].d)||{}; }
 function erow(k,label,field,val){ return '<div class="rrrow"><span class="k">'+label+'</span><span class="v" contenteditable="true" data-rf="'+field+'">'+esc(val||'')+'</span></div>'; }
@@ -1651,6 +1654,18 @@ function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent
 
 var parkView='active';
 function setParkView(v){ parkView=v; renderView(); }
+// human summary of a parked draft: ICU day (as parked) · admit · working dx · what's been done · plan
+function parkDayCount(d, asOf){ if(!d||!d.icu_admit)return null; var a=new Date(d.icu_admit), t=asOf?new Date(asOf):new Date(); if(isNaN(a))return null; a.setHours(0,0,0,0); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?null:n; }
+function parkLines(v){ if(!v)return []; return (Array.isArray(v)?v:String(v).split(/\r?\n/)).map(function(x){return (''+x).replace(/\s+/g,' ').trim();}).filter(Boolean); }
+function parkSummary(p){ var d=p.d||{};
+  var active=(d.problems||[]).filter(function(x){return x&&x.name&&x.type!=='goc'&&x.type!=='dispo';});
+  var done=[], plan=[];
+  active.forEach(function(x){ parkLines(x.tx).forEach(function(l){done.push(l);}); parkLines(x.plan).forEach(function(l){plan.push(l);}); });
+  (d.tasks||[]).forEach(function(t){ if(t&&t.text)plan.push((t.kind==='watch'?'⚠ ':'')+t.text); });
+  var goc=(d.problems||[]).filter(function(x){return x&&x.type==='goc';})[0];
+  return { day:parkDayCount(d,p.savedAt), admit:d.icu_admit||'',
+    dx:d.subtitle||(Array.isArray(d.diagnoses)?d.diagnoses[0]:d.diagnoses)||'',
+    goc:goc&&goc.goc_status||'', done:done.slice(0,6), plan:plan.slice(0,6) }; }
 function renderPark(view){
   rrStyle();
   var showing=parkView==='archived';
@@ -1664,11 +1679,17 @@ function renderPark(view){
   var body='<div class="parkwrap">';
   if(!list.length){ body+='<div class="stub" style="padding:24px">'+(showing?'No archived drafts yet. Activated or cleared parks land here — nothing is lost.':'No parked drafts. The day before a unit shift, run <b>icu prep Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.')+'</div>'; }
   list.slice().sort(function(a,b){return ((b.archivedAt||b.savedAt)||'').localeCompare((a.archivedAt||a.savedAt)||'');}).forEach(function(p){
-    var d=p.d||{}, when=(p.savedAt||'').slice(0,10);
-    body+='<div class="parkitem"'+(showing?' style="opacity:.75"':'')+'><div class="pi-main">'
+    var d=p.d||{}, when=(p.savedAt||'').slice(0,10), s=parkSummary(p);
+    var sumHTML='<div class="pi-sum">'
+      +'<div class="pi-line"><span class="pi-lbl">Working dx</span>'+esc(s.dx||'—')+(s.goc?' <span class="pi-goc">'+esc((''+s.goc).toUpperCase().slice(0,2))+'</span>':'')+'</div>'
+      +(s.done.length?'<div class="pi-line"><span class="pi-lbl">Done</span>'+esc(s.done.join(' · '))+'</div>':'')
+      +(s.plan.length?'<div class="pi-line"><span class="pi-lbl">Plan</span>'+esc(s.plan.join(' · '))+'</div>':'')
+      +'</div>';
+    body+='<div class="parkitem"'+(showing?' style="opacity:.72"':'')+'><div class="pi-main">'
       +'<div><span class="pi-u">'+esc((p.unit||d.unit||'?').toString().toUpperCase())+'</span>'
-      +'<span class="pi-sub">'+esc(d.age_sex||'')+(d.subtitle?' · '+esc(d.subtitle):'')+(d.bed?' · bed '+esc(''+d.bed):'')+'</span></div>'
-      +'<div class="pi-meta">parked '+esc(when)+(d.icu_admit?' · ICU admit '+esc(d.icu_admit):'')+(showing?' · '+esc(p.how||'archived')+' '+esc((p.archivedAt||'').slice(0,10)):'')+'</div></div>'
+      +'<span class="pi-sub">'+esc(d.age_sex||'')+(s.day?' · ICU Day '+s.day:'')+(d.bed?' · bed '+esc(''+d.bed):'')+'</span></div>'
+      +'<div class="pi-meta">parked '+esc(when)+(d.icu_admit?' · ICU admit '+esc(d.icu_admit):'')+(showing?' · '+esc(p.how||'archived')+' '+esc((p.archivedAt||'').slice(0,10)):'')+'</div>'
+      +sumHTML+'</div>'
       +'<div class="pi-btns">'
       +(showing
           ? '<button class="cpy" onclick="copyPark(\''+p.id+'\',1)">📋 Copy JSON</button><button class="act" onclick="parkRestore(\''+p.id+'\');renderView()">♻ Restore</button>'
@@ -1687,7 +1708,7 @@ function activatePark(id){
   captureCurrentBed();
   unit=u; try{localStorage.setItem('ub_last_unit',unit);}catch(e){} document.getElementById('unitSel').value=unit;
   load();
-  var nd=JSON.parse(JSON.stringify(d)); delete nd.prep; delete nd.prep_date; nd.bed=n; if(!nd.note_type)nd.note_type='daily';
+  var nd=JSON.parse(JSON.stringify(d)); delete nd.prep; delete nd.prep_date; nd.bed=n; nd.note_type='daily';   // activation → a real daily bed (force, in case it was note_type:"prep")
   beds[n]={ d:nd, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
   save(); parkArchive(id,'activated');
   current=n; section='daily'; setTab('daily'); renderRail(); renderView(); if(syncOn())syncPull();
