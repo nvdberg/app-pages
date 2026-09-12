@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.51 · 07-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.52 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -129,7 +129,15 @@
    invariants (§23) are baked in and must not be removed. */
 function rsEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 // visible safety cap for the flag boxes — the JSON should already be condensed (rules §23); this is the net.
-function rsCap(s,n){ s=String(s==null?'':s).replace(/\s+/g,' ').trim(); return (n&&s.length>n)?s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…':s; }
+function rsCap(s,n){ s=String(s==null?'':s).replace(/\s+/g,' ').trim();
+  if(!n||s.length<=n) return s;
+  var cut=s.slice(0,n-1), sp=cut.lastIndexOf(' '); if(sp>n*0.6) cut=cut.slice(0,sp);   // word boundary, never mid-word (#10)
+  return cut.replace(/[·\s—-]+$/,'')+'…'; }
+// SMOST short-form so the rounding sheet matches the handover (M ≠ comfort) — no bare "M2" (#6)
+var RS_GOC={R1:'Full code',R2:'No CPR',R3:'No CPR/intub · NIPPV OK',M1:'Medical + transfer',M2:'Medical · on-site only',C1:'Comfort care',C2:'Comfort · imminent'};
+function rsGocShort(status){ var s=String(status==null?'':status).toUpperCase().trim();
+  var m=s.match(/^(R[123]|M[12]|C[12])/)||(/^FULL/.test(s)?['','R1']:null);
+  return m ? m[1]+' — '+RS_GOC[m[1]] : String(status==null?'':status).trim(); }
 function rsShiftNow(){ var d=new Date(); if(d.getHours()<8)d.setDate(d.getDate()-1); return d; }   // 08:00→08:00 shift date
 function rsDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=rsShiftNow(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return isNaN(n)?'?':n; }
 function rsDBt(a,b){ if(!a||!b)return 0; var d1=new Date(a),d2=new Date(b); d1.setHours(0,0,0,0); d2.setHours(0,0,0,0); var n=Math.round((d2-d1)/86400000); return isNaN(n)?0:n; }
@@ -172,7 +180,7 @@ function rsFlagsBlock(d){
   var aro=rsFlat(d.aro); aro=aro?aro:'None';
   var alg=rsFlat(d.allergies); alg=alg?alg:'NKA';
   var gocP=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
-  var goc=gocP?((gocP.goc_status||'?')+(gocP.goc_note?' — '+rsCap(gocP.goc_note,300):'')):'Unknown';
+  var goc=gocP?(rsGocShort(gocP.goc_status||'?')+(gocP.goc_note?' — '+rsCap(gocP.goc_note,300):'')):'Unknown';
   var aroCls=/none|neg/i.test(aro)?'ok':'';
   var algCls=/^nka|none|nil/i.test(alg)?'ok':'warn';
   return '<div class="flags">'
@@ -280,7 +288,7 @@ function renderRoundingSheet(d){
   d=d||{};
   var day=rsDay(d.icu_admit);
   var unit=(d.unit||'').toUpperCase();
-  var dx=d.subtitle||((d.diagnoses||[]).join(' · '))||'';
+  var dx=d.subtitle||(Array.isArray(d.diagnoses)?d.diagnoses.join(' · '):(d.diagnoses||''))||'';   // tolerate diagnoses as string OR array (#7 — was TypeError)
   var admitStr=d.icu_admit?(' · ICU admit '+d.icu_admit):'';
   var CSS='*{box-sizing:border-box;margin:0;padding:0}'
    +'@page{size:A4 portrait;margin:12mm 8mm 8mm 8mm}'
@@ -338,6 +346,16 @@ function renderRoundingSheet(d){
 function hvClean(s){ return String(s==null?'':s).replace(/\s+/g,' ').trim(); }
 function hvLines(v){ if(!v)return []; if(Array.isArray(v))return v.map(hvClean).filter(Boolean);
   return String(v).split(/\r?\n/).map(hvClean).filter(Boolean); }
+// flatten allergies (string | [str] | [{allergen,reaction}]) → "penicillin (rash) · sulfa" ; drops NKDA/none
+function hvAllergy(a){
+  if(!a) return '';
+  var items=Array.isArray(a) ? a.map(function(x){ return (x&&typeof x==='object')
+        ? hvClean((x.allergen||x.name||x.drug||'')+(x.reaction?' ('+x.reaction+')':'')) : hvClean(x); })
+      : hvLines(a);
+  return items.filter(Boolean).filter(function(s){ return !/^(nkda|nka|none|no known|nil|denies)\b/i.test(s); }).join(' · ');
+}
+// safety-flagged (**) lines first, so the length caps trim non-flagged content before a safety line
+function hvPrioritize(arr){ var f=[],r=[]; arr.forEach(function(l){ (/^\s*\*\*/.test(l)?f:r).push(l); }); return f.concat(r); }
 // Extract a terse cath/PCI summary from hospital_course / presentation / problem contexts — e.g. "PCI 2 DES RCA/PDA".
 // Surfaces the vessels+stents into the working-dx headline (esp. CCU) without needing a regenerate.
 function hvProc(d){
@@ -349,13 +367,28 @@ function hvProc(d){
   var vessels=[], vre=/\b(LMCA|LAD|LCx|Cx|RCA|pRCA|dRCA|PDA|PLV|OM\d?|D[12]|ramus)\b/gi, m;
   while((m=vre.exec(line))){ var i=m.index, ctx=line.slice(Math.max(0,i-22), i+m[0].length+22);
     if(/\b(des|stent|drug[- ]?elut)\b/i.test(ctx)){ var v=m[0].toUpperCase().replace(/^[PD]RCA$/,'RCA'); if(vessels.indexOf(v)<0)vessels.push(v); } }
-  var cnt=(line.match(/\b(des|drug[- ]?elut(?:ing)?\s*stent|stent)\b/gi)||[]).length;
+  // COUNT: only from an EXPLICIT quantifier adjacent to a stent word ("2 DES", "1x DES", "DES x2", "two stents").
+  // NEVER count raw keyword occurrences (the word "stent" repeats in prose → fabricated counts). No quantifier → no number.
+  var W={one:1,two:2,three:3,four:4,five:5};
+  var cm=line.match(/\b(\d+)\s*x?\s*(?:des|bms|drug[- ]?elut\w*(?:\s*stent)?|stents?)\b/i)
+       || line.match(/\b(?:des|bms|stents?)\s*x\s*(\d+)\b/i)
+       || line.match(/\b(one|two|three|four|five)\s+(?:des|bms|drug[- ]?elut\w*|stents?)\b/i);
+  var cnt=cm ? (W[String(cm[1]).toLowerCase()]||parseInt(cm[1],10)||0) : 0;
   var word=/\bbms\b/i.test(line)?'BMS':'DES';
   if(!vessels.length && !cnt) return '';
   return ('PCI'+(cnt?' '+cnt+' '+word:'')+(vessels.length?' '+vessels.slice(0,3).join('/'):'')).trim();
 }
-function hvJoin(arr, sep, cap){ var s=arr.filter(Boolean).join(sep); return cap&&s.length>cap ? s.slice(0,cap-1).replace(/[·\s]+$/,'')+'…' : s; }
-function hvCap(s, n){ s=hvClean(s); return (n&&s.length>n) ? s.slice(0,n-1).replace(/[·\s—-]+$/,'')+'…' : s; }
+// truncate at an ITEM (· ) boundary if possible, else a WORD boundary — never mid-word (matches Concise cFit behaviour)
+function hvJoin(arr, sep, cap){ var s=arr.filter(Boolean).join(sep);
+  if(!cap || s.length<=cap) return s;
+  var cut=s.slice(0,cap-1), ls=cut.lastIndexOf(' · ');
+  if(ls>cap*0.5) cut=cut.slice(0,ls); else { var sp=cut.lastIndexOf(' '); if(sp>0) cut=cut.slice(0,sp); }
+  return cut.replace(/[·\s—-]+$/,'')+'…'; }
+function hvCap(s, n){ s=hvClean(s);
+  if(!n || s.length<=n) return s;
+  var cut=s.slice(0,n-1), sp=cut.lastIndexOf(' ');
+  if(sp>n*0.6) cut=cut.slice(0,sp);                       // prefer a word boundary; keep short caps usable
+  return cut.replace(/[·\s—-]+$/,'')+'…'; }
 // per-field caps tuned to the 67 mm handover cell — keeps content from silently clipping.
 // The JSON should already be authored within these (rules §handover); this is the visible safety net.
 var HVCAP={ admit:95, event:210, dx:170, pmhx:170, tx:185, plan:180, goc_text:95 };
@@ -369,7 +402,9 @@ function hvTxKeep(l){
   if(/foley|hob\b|head of bed|oral care|turn q|skin care|pressure area|nursing|mouth care/i.test(l)) return false;
   // routine ICU / PPO standing orders & monitoring targets — background noise, not "what we're actively doing"
   if(/icu mobility|mobility protocol|mobili[sz]|aspiration precaution|\bprecautions?\b|spo2 (goal|target|>|≥)|sat[s]? (goal|target)|o2 (goal|target)|map (goal|target|>|≥)|\bgoal\b|prophylax|\bvte\b|\bdvt\b|stress ulcer|\bppi\b|cam-?icu|neuro vitals?|q\d+h vitals?|bowel regimen|glycemic|insulin sliding|sliding scale/i.test(l)) return false;
-  if(/^\s*(stopped|discontinued|d\/?c'?d|completed)\b/i.test(l)) return false;  // fully stopped
+  // fully-stopped lines are usually routine — BUT keep any that carry a safety reason/warning (e.g. "d/c heparin due to HIT — do NOT restart")
+  if(/^\s*(stopped|discontinued|d\/?c'?d|completed|held)\b/i.test(l))
+    return /\b(due to|because|secondary to|do ?not|don'?t|avoid|hold|allerg|\bhit\b|reaction|hypersensitiv|contraindicat|bleed|overdose|toxic)/i.test(l);
   return true;
 }
 function hvPlanKeep(l){
@@ -413,8 +448,16 @@ function hvTransferTag(s){
     else if(diff===0) date=' · today';
     else date=' · '+dNum+' '+HV_MONc[mName.toLowerCase()];                  // future/planned → show the date
   }
-  var inbound=/\b(from|repatriat|received from|transferred? in\b|accepted from)\b/.test(sl)
-    && !/\bto\s+(the\s+)?(ward|floor|home|medicine|hospitalist|step|or|surgery|oncolog|surveillance)/.test(sl);
+  // DIRECTION (#2): dispo_summary is almost always an OUTBOUND plan. Only call it inbound on a
+  // movement-verb-adjacent "from"/"in" cue, AND only if there's no explicit outbound "to/out" cue.
+  // (Fixes "Transfer TO Rehab … weaned FROM O2" flipping to "← from Rehab" on the bare word "from".)
+  var outCue=/\b(?:transfer(?:red)?|discharg\w*|d\/?c'?\w*|send|sent|step[- ]?down|refer\w*|dispo\w*)\s+(?:the\s+patient\s+)?(?:to|out)\b/.test(sl)
+    || /\b(?:to|out to)\s+(?:the\s+)?(?:ward|floor|home|medicine|hospitalist|step|or\b|surgery|oncolog|surveillance|rehab|ltac|palliat|hospice|psych|another|outside)/.test(sl)
+    || /→/.test(s);
+  var inCue=/\b(?:transfer(?:red)?|repatriat\w*|received|accepted|admitted|arriv\w*)\s+(?:from|in)\b/.test(sl)
+    || /\bfrom\s+(?:an?\s+)?(?:outside|referring|another|other|osh\b)/.test(sl)
+    || /←/.test(s);
+  var inbound=inCue && !outCue;
   var dest;
   if(/hospitalist/.test(sl)) dest='Hospitalist ward';
   else if(/internal medicine|general medicine|\bmedicine\b|\bgim\b|\bim\b/.test(sl)) dest='Medicine ward';
@@ -422,11 +465,17 @@ function hvTransferTag(s){
   else if(/surveillance|\bpsu\b/.test(sl)) dest='Pasqua Surveillance';
   else if(/oncolog|cancer/.test(sl)) dest='Oncology';
   else if(/step[\s-]?down|\bhdu\b/.test(sl)) dest='Step-down';
+  else if(/\brehab/.test(sl)) dest='Rehab';
+  else if(/ltac|long[\s-]?term/.test(sl)) dest='LTACH';
+  else if(/palliat|hospice/.test(sl)) dest='Palliative';
+  else if(/psych/.test(sl)) dest='Psychiatry';
   else if(/home|discharge/.test(sl)) dest='Home';
   else if(/\bor\b|theatre|operat/.test(sl)) dest='OR';
   else if(/\bm?icu\b|\bsicu\b|\bpicu\b|\bccu\b|\bcsu\b/i.test(s)){ var um=s.match(/\b(m?icu|sicu|picu|ccu|csu)\b/i); dest=um?um[1].toUpperCase():'ICU'; }
   else if(/\bward\b|\bfloor\b/.test(sl)) dest='Ward';
-  else { var mm=s.match(/(?:to|from|→|←)\s+([A-Z][A-Za-z /]{2,22})/); dest=mm?mm[1].trim():hvCap(s,22); }
+  // fallback: capture the destination after a to/from, stopping at a clause boundary (comma, once/when/if/for/pending/after)
+  else { var mm=s.match(/(?:to|from|→|←)\s+([A-Za-z][A-Za-z /'-]{1,28}?)(?=\s*(?:,|;|\bonce\b|\bwhen\b|\bif\b|\bfor\b|\bpending\b|\bafter\b|\bwhen\b|$))/i);
+         dest=mm?mm[1].trim():hvCap(s,22); }
   return (inbound?'← from ':'→ ')+dest+date;
 }
 
@@ -439,7 +488,7 @@ function bedToHandover(d, overnight, uncap){
   var active=probs.filter(function(p){return p&&p.name&&p.type!=='goc'&&p.type!=='dispo';});  // regular problems = anything not goc/dispo (robust to type:"problem" that captureToD stamps on edit)
 
   var pt=hvClean(d.age_sex)+' · Day '+day;
-  var subA=hvClean(d.subtitle||(d.diagnoses||[])[0]||'').replace(/^\d+[.)]\s*/,'');
+  var subA=hvClean(d.subtitle||hvLines(d.diagnoses)[0]||'').replace(/^\d+[.)]\s*/,'');   // hvLines() tolerates diagnoses as string OR array (#7)
   var proc = /\bpci\b|\bstent|\bdes\b|\bcath/i.test(subA) ? '' : hvProc(d);   // fold cath/PCI vessels+stents into the headline if not already stated
   var admit=hvCap(subA+(proc?' · '+proc:''), CAP.admit);
 
@@ -457,11 +506,11 @@ function bedToHandover(d, overnight, uncap){
   // pmhx = the MAIN thing per comorbidity — keep dates, drop pathology/genetics minutiae. Per-item cap + first 6.
   var pmhx=hvJoin(hvLines(d.pmhx).slice(0,uncap?99:6).map(function(l){return hvCap(hvClean(l), uncap?0:46);}), ' · ', CAP.pmhx);
   var txAll=[]; active.forEach(function(p){ hvLines(p.tx).filter(hvTxKeep).forEach(function(l){txAll.push(l);}); });
-  var tx=hvJoin(txAll, ' · ', CAP.tx);
+  var tx=hvJoin(hvPrioritize(txAll), ' · ', CAP.tx);   // ** safety lines first so caps never slice them (#5)
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
   (d.tasks||[]).forEach(function(t){ if(t&&t.kind==='new')planAll.push(hvClean(t.text)); else if(t&&t.kind==='stop')planAll.push('Stop '+hvClean(t.text)); });
   if(dispo&&dispo.dispo_summary) planAll.push(hvClean(dispo.dispo_summary));
-  var plan=hvJoin(planAll, ' · ', CAP.plan);
+  var plan=hvJoin(hvPrioritize(planAll), ' · ', CAP.plan);
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
@@ -471,8 +520,10 @@ function bedToHandover(d, overnight, uncap){
     var gn=hvClean(goc.goc_note); if(gn) gn=hvCap(gn.split(/\.\s|;\s/)[0], 58);   // first clause only, tight
     goc_text=hvCap(gs+(gn?' — '+gn:''), CAP.goc_text); }
 
-  // tags: transfer (DIRECTION + specific destination + date) · M/C-level GoC alert · new · ARO
+  // tags: ALLERGY (never-miss, leads) · transfer (DIRECTION + destination + date) · M/C-level GoC alert · new · ARO
   var tags=[];
+  var alg=hvAllergy(d.allergies);
+  if(alg) tags.push({cls:'alert-tag',text:'⚠ Allergy: '+alg});   // #3 — allergies reach the auto-handover card (was rounding-sheet only)
   if(dispo&&dispo.dispo_summary){ tags.push({cls:'transfer-tag',text:hvTransferTag(hvClean(dispo.dispo_summary))}); }
   // GoC ceiling tag: M2/C1/C2 = escalation-limited → ⚠ alert; R3/M1 = a plain info chip (still active/aggressive care)
   if(/^(M2|C1|C2)/.test(gocStat)) tags.push({cls:'alert-tag',text:'⚠ '+hvGocShort(gocStat)});
@@ -540,10 +591,15 @@ function buildHandoverD(boardUnit, bedsMap, uncap){
   var beds={};
   for(var n=1;n<=cfg.n;n++){
     var w=bedsMap&&bedsMap[n];
-    beds[String(n)] = (w&&w.hvcard)          ? normHvCard(w.hvcard, w.overnight)       // colleague mini-card
-                    : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight, uncap)   // pre-authored (gold)
-                    : (w&&w.d)               ? bedToHandover(w.d, w.overnight, uncap)  // transform (fallback)
-                    :                          {empty:true};
+    // #8 — per-bed isolation: one malformed bed must never blank the whole unit's handover at shift change
+    try {
+      beds[String(n)] = (w&&w.hvcard)          ? normHvCard(w.hvcard, w.overnight)       // colleague mini-card
+                      : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight, uncap)   // pre-authored (gold)
+                      : (w&&w.d)               ? bedToHandover(w.d, w.overnight, uncap)  // transform (fallback)
+                      :                          {empty:true};
+    } catch(e){
+      beds[String(n)] = { pt:'Bed '+n, admit:'⚠ render error — open this bed and re-paste', _err:String(e&&e.message||e), goc:'goc-uk', tags:[] };
+    }
   }
   return {unit:cfg.tool, beds:beds};
 }
@@ -730,7 +786,7 @@ function load(){
       beds[k]={ d:v, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
     }
   });
-  localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+curDate())||'0',10)||0;
+  try{ localStateAt=parseInt(localStorage.getItem('ub_stateAt_'+unit+'_'+curDate())||'0',10)||0; }catch(e){ localStateAt=0; }   // #15 — guarded so private-mode/blocked storage can't stop the board opening
   try{ var ho=localStorage.getItem(hovKey()); hovOverride=ho?JSON.parse(ho):null; }catch(e){ hovOverride=null; }
 }
 function saveHov(){ try{ if(hovOverride)localStorage.setItem(hovKey(),JSON.stringify(hovOverride)); else localStorage.removeItem(hovKey()); }catch(e){}
