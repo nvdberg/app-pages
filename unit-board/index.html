@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.53 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.54 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -101,6 +101,7 @@
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
     <button data-sec="concise" onclick="showSec('concise')">Concise</button>
     <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
+    <button data-sec="park" onclick="showSec('park')">🅿️ Park</button>
     <button data-sec="angela" id="angtab" onclick="showSec('angela')" hidden>Angela</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
     <label id="anglbl" style="display:flex;align-items:center;gap:3px;margin-left:6px;font-size:11px;color:#cfe0ff;cursor:pointer" title="Angela handover — engineer-style terse view with status boxes"><input type="checkbox" id="angchk" onchange="toggleAngela()" style="cursor:pointer"> 🔬 Angela</label>
@@ -622,8 +623,10 @@ function admUnitCode(d){ var u=String((d&&d.unit)||unit||'sicu').toLowerCase(); 
 var UNITS={
   'PICU+PICUSU':{ groups:[ {label:'PICU', beds:[1,2,3,4,5,6,7]}, {label:'PICUSU', beds:[8,9,10,11]} ] },
   MICU:{n:10,from:1}, SICU:{n:12,from:1}, CCU:{n:12,from:1},
-  CSU:{n:8,from:1,admOnly:true}, MSU:{n:6,from:1,admOnly:true}   // CSU/MSU: admission-only (no rounding/handover). Confirm MSU bed count.
+  CSU:{n:8,from:1,admOnly:true}, MSU:{n:6,from:1,admOnly:true},   // CSU/MSU: admission-only (no rounding/handover). Confirm MSU bed count.
+  'Rapid Response':{rr:true}   // RR: not beds — a timestamped worklist of consults/codes/admissions (§27)
 };
+function isRR(){ return unit==='Rapid Response'; }
 var UNIT_ALIAS={ PICU:'PICU+PICUSU', PICUSU:'PICU+PICUSU' };  // either name routes to the combined Pasqua board
 function normUnit(u){ u=String(u||'').toUpperCase(); return UNIT_ALIAS[u]||u; }
 function unitGroups(u){ var c=UNITS[u]; if(c&&c.groups)return c.groups; var a=[]; if(c){for(var i=0;i<c.n;i++)a.push(c.from+i);} return [{label:'',beds:a}]; }
@@ -683,7 +686,7 @@ function collectHistory(){
   var map={};
   for(var i=0;i<localStorage.length;i++){
     var k=localStorage.key(i);
-    var m=k&&k.match(/^unitboard_([A-Za-z]+)_(\d{2}-[A-Za-z]{3}-\d{4})$/);
+    var m=k&&k.match(/^unitboard_(.+)_(\d{2}-[A-Za-z]{3}-\d{4})$/);   // unit may contain space/+ (Rapid Response, PICU+PICUSU) — was [A-Za-z]+ which dropped them from History
     if(!m)continue;
     var iso=dmyToIso(m[2]); if(!iso)continue;
     var n=0; try{var b=JSON.parse(localStorage.getItem(k)||'{}'); n=Object.keys(b).filter(function(x){return b[x];}).length;}catch(e){}
@@ -772,9 +775,10 @@ function init(){
   sel.value=unit;
   var ac=document.getElementById('angchk'); if(ac){ ac.checked=angOn(); document.getElementById('angtab').hidden=!angOn(); }
   document.getElementById('dateInp').value=viewIso; renderRoBar();
+  parkLoad();
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
-  if(syncOn()){ syncPull(); startSyncPoll(); }
+  if(syncOn()){ syncPull(); startSyncPoll(); parkPull(); }
   detectShift();   // fetch on-call schedule → pre-select today's unit (async, non-blocking; dropdown always overrides)
 }
 function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; try{localStorage.setItem('ub_last_unit',unit);}catch(e){}
@@ -792,7 +796,7 @@ function shiftMap(summary){
   if(/\bMICU\b/i.test(s)) return {unit:'MICU', label:'MICU (24h call)'};
   if(/\bSICU\b/i.test(s)) return {unit:'SICU', label:'SICU (24h call)'};
   if(/\bCCU\b/i.test(s))  return {unit:'CCU',  label:'CCU (24h call)'};
-  if(/\bRR\b|rapid\s*response/i.test(s)) return {unit:null, label:'Rapid Response (day 08:00–17:00)'};  // not a unit board
+  if(/\bRR\b|rapid\s*response/i.test(s)) return {unit:'Rapid Response', label:'Rapid Response (day 08:00–17:00)'};   // now a real board view (§27)
   return {unit:null, label:s.replace(/^[^\w]+/,'').trim()||'(shift)'};
 }
 // find the event whose LOCAL (UTC−6) start-date equals today's shift date; return {map, ev} or null
@@ -882,7 +886,25 @@ function syncPull(cb){ if(!syncOn()){cb&&cb();return;}
     setSync('⇅ synced','ok'); cb&&cb();
   }).catch(function(){ setSync('⇅ offline','err'); cb&&cb(); });
 }
-function startSyncPoll(){ clearInterval(syncTimer); if(syncOn()) syncTimer=setInterval(function(){ syncPull(); }, 10000); }
+function startSyncPoll(){ clearInterval(syncTimer); if(syncOn()) syncTimer=setInterval(function(){ syncPull(); if(section==='park')parkPull(); }, 10000); }
+
+// ---- Park store (prep drafts) — cross-unit, cross-device (own Supabase row unit=__PARK__) ----
+var parkData=[];
+function parkLoad(){ try{ var raw=localStorage.getItem('ub_park'); parkData=raw?JSON.parse(raw):[]; }catch(e){ parkData=[]; } }
+function parkSaveLocal(){ try{ localStorage.setItem('ub_park', JSON.stringify(parkData)); }catch(e){} }
+function parkAdd(d){ var id='p'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36);
+  parkData.push({ id:id, d:d, unit:(d&&normUnit(d.unit))||'', savedAt:new Date().toISOString() });
+  parkSaveLocal(); parkPush(); return id; }
+function parkRemove(id){ parkData=parkData.filter(function(p){return p.id!==id;}); parkSaveLocal(); parkPush(); }
+function parkPush(){ if(!syncOn())return;
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),
+    body:JSON.stringify({space:syncSpace,unit:'__PARK__',date:'all',data:{park:parkData},updated_at:new Date().toISOString()})}).catch(function(){}); }
+function parkPull(cb){ if(!syncOn()){cb&&cb();return;}
+  var q=SB_URL+'?select=data&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.__PARK__&date=eq.all';
+  fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
+    if(rows&&rows[0]&&rows[0].data&&Array.isArray(rows[0].data.park)){ parkData=rows[0].data.park; parkSaveLocal(); if(section==='park')renderView(); }
+    cb&&cb();
+  }).catch(function(){ cb&&cb(); }); }
 function syncSetup(){
   var cur=syncSpace?'(currently ON)':'(currently OFF)';
   var v=prompt('Cross-device Sync '+cur+'\n\nEnter your PRIVATE sync passphrase — use the SAME one on every device (PC + laptop) to share your beds live.\nMake it long & unguessable (it is your only key — no one without it can read your data).\nLeave blank + OK to turn sync OFF on this device.', syncSpace);
@@ -894,7 +916,34 @@ function syncSetup(){
 
 function bedList(){ var a=[]; unitGroups(unit).forEach(function(gr){ a=a.concat(gr.beds); }); return a; }
 
+var RR_ICON={consult:'🩺',code:'🚑',admission:'➕',entry:'📝'};
+function rrEntries(){ return Object.keys(beds).filter(function(k){return beds[k]&&beds[k].rr;})
+  .sort(function(a,b){ return (Date.parse(beds[a].ts)||0)-(Date.parse(beds[b].ts)||0); }); }   // chronological
+function rrTime(ts){ var d=new Date(ts); if(isNaN(d))return ''; return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); }
+function rrLabel(w){ var d=w.d||{};
+  if(w.kind==='consult') return (d.location||'?')+' · '+(d.age_sex||'')+' · '+(d.reason||d.subtitle||'consult');
+  if(w.kind==='code')    return (d.location||'?')+' · '+(d.age_sex||'')+' · code '+(d.initial_rhythm||'');
+  if(w.kind==='admission')return 'Admit '+((d.unit||'').toUpperCase())+' · '+(d.age_sex||'')+' · '+(d.subtitle||'');
+  return (d.subtitle||d.age_sex||'entry'); }
+function renderRRRail(){
+  var rail=document.getElementById('rail'); rail.innerHTML='';
+  var h=document.createElement('div'); h.className='raillbl'; h.textContent='🚑 Rapid Response · '+viewIso; rail.appendChild(h);
+  var box=document.createElement('div'); box.className='railgrp';
+  var ids=rrEntries();
+  if(!ids.length){ var e=document.createElement('div'); e.className='idl empty'; e.style.padding='8px 10px';
+    e.innerHTML='No entries yet.<br>Paste an <b>icu consult:</b>, <b>icu code blue:</b>, or <b>icu admission</b> JSON above.'; box.appendChild(e); }
+  ids.forEach(function(k){ var w=beds[k], b=document.createElement('button');
+    b.className='bedbtn filled'+(current===k?' cur':'');
+    b.innerHTML='<span class="dot"></span><span class="bn">'+ (RR_ICON[w.kind]||'📝') +' '+rrTime(w.ts)+'</span>'
+      +'<span class="st '+(w.kind==='code'?'pr':'done')+'" title="'+esc(w.kind)+'">'+esc((w.kind||'').slice(0,4).toUpperCase())+'</span>'
+      +'<span class="idl">'+esc((''+rrLabel(w)).slice(0,120))+'</span>';
+    b.onclick=function(){ openBed(k); };
+    box.appendChild(b);
+  });
+  rail.appendChild(box);
+}
 function renderRail(){
+  if(isRR()){ renderRRRail(); return; }
   var rail=document.getElementById('rail'); rail.innerHTML='';
   unitGroups(unit).forEach(function(gr){
     if(gr.label){ var h=document.createElement('div'); h.className='raillbl'; h.textContent=gr.label; rail.appendChild(h); }
@@ -945,6 +994,7 @@ function renderRail(){
 function renderBedBar(){
   var bar=document.getElementById('bedbar');
   if(section!=='daily' || current==null || !beds[current]){ bar.style.display='none'; bar.innerHTML=''; return; }
+  if(beds[current].rr){ bar.style.display='none'; bar.innerHTML=''; return; }   // RR entries carry their own card actions (Copy/Delete/Send)
   var w=beds[current], d=w.d||{}, done=w.taskDone||[];
   var isUn=/^U\d+$/.test(String(current));
   var tag=isUn?String(current).replace('U','Unassigned '):('Bed '+current);
@@ -992,6 +1042,15 @@ function isHvCard(d){ // a Claude-condensed handover mini-card
 function nextUnassignedKey(){ var i=1; while(beds['U'+i])i++; return 'U'+i; }
 function routeEntry(d){ // slot one parsed object into its bed; returns {ok,bed} or {ok:false,err}
   if(!d||typeof d!=='object'||Array.isArray(d)) return {ok:false,err:'not an object'};
+  // PREP draft (§27) → Park store, regardless of current unit (cross-unit staging)
+  if(d.prep===true){ var pid=parkAdd(d); return {ok:true, bed:pid, park:true}; }
+  // Rapid Response → timestamped worklist entry (consult/code/admission all kept UNDER RR, never auto-routed to a unit)
+  if(isRR()){
+    var ts=(d.ts&&Date.parse(d.ts))?d.ts:new Date().toISOString();
+    var key='e'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36);
+    beds[key]={ d:d, stay:mintStay(), ts:ts, rr:true, kind:(d.note_type||'entry'), state:'done', overnight:'', taskDone:[] };
+    return {ok:true, bed:key, rr:true};
+  }
   var n=d.bed;
   var isUn = (n==null) || /^(unassigned|pending|tbd|none|u\d*)$/i.test(String(n).trim());
   var hv=isHvCard(d);
@@ -1008,8 +1067,8 @@ function loadJSONText(t, srcMsg){
   var msg=document.getElementById('msg');
   var parsed; try{ parsed=JSON.parse(t); }catch(e){ if(msg)msg.textContent='⚠ Not valid JSON: '+e.message; return {loaded:[],err:e.message}; }
   var arr=Array.isArray(parsed)?parsed:[parsed];
-  // switch unit once, from the first entry that names a known unit
-  for(var i=0;i<arr.length;i++){ var u=arr[i]&&normUnit(arr[i].unit); if(arr[i]&&arr[i].unit&&UNITS[u]&&u!==unit){ unit=u; document.getElementById('unitSel').value=unit; load(); break; } }
+  // switch unit once, from the first entry that names a known unit — BUT not while in RR (entries stay in RR) and not for prep drafts (they go to Park)
+  if(!isRR()) for(var i=0;i<arr.length;i++){ if(arr[i]&&arr[i].prep===true)continue; var u=arr[i]&&normUnit(arr[i].unit); if(arr[i]&&arr[i].unit&&UNITS[u]&&u!==unit){ unit=u; document.getElementById('unitSel').value=unit; load(); break; } }
   var loaded=[], errs=[];
   arr.forEach(function(d){ var r=routeEntry(d); if(r.ok)loaded.push(r.bed); else errs.push(r.err); });
   save();
@@ -1024,9 +1083,13 @@ function loadPaste(){
   var res=loadJSONText(t);             // …then routeEntry replaces beds[n].d with the fresh paste (+ clears stale _scm)
   if(res.loaded===undefined) return;
   document.getElementById('pjson').value='';
+  // prep draft(s) → landed in Park: jump to the Park tab so the user sees them
+  if(res.loaded.length && res.loaded.every(function(k){return String(k).charAt(0)==='p';}) && !isRR()){
+    document.getElementById('msg').textContent='🅿️ Parked '+res.loaded.length+' prep draft'+(res.loaded.length>1?'s':'')+' — see the Park tab.';
+    showSec('park'); return; }
   renderRail();
   // NB: set current + render directly — do NOT call openBed() here, its captureCurrentBed() would clobber the fresh paste
-  if(res.loaded.length===1 && section==='daily'){ current=res.loaded[0]; setTab('daily'); renderRail(); renderView(); }
+  if(res.loaded.length>=1 && section==='daily'){ current=res.loaded[res.loaded.length-1]; setTab('daily'); renderRail(); renderView(); }
   else renderView();
 }
 
@@ -1036,6 +1099,7 @@ function renderView(){
   if(section==='daily'){
     if(current!=null){
       if(!beds[current]){ view.innerHTML='<div class="panel"><div class="stub">Bed '+current+' is empty — paste this bed&rsquo;s JSON in the box above to load it.</div></div>'; }
+      else if(beds[current].rr && (beds[current].kind==='consult'||beds[current].kind==='code')){ view.innerHTML=rrCardHTML(current); bindRRCard(current); }
       else if(beds[current].hvcard && !beds[current].d){
         view.innerHTML='<div class="panel"><div class="stub"><b>Bed '+current+' — handover-only.</b><br>A colleague / uncharted bed (mini handover card, <code>hv:1</code>). It appears on the <b>Handover</b> tab. To add a full daily note, paste this bed&rsquo;s §10 JSON.</div></div>';
       }
@@ -1063,6 +1127,7 @@ function renderView(){
   } else if(section==='handover'){ renderHandover(view); }
   else if(section==='concise'){ renderConcise(view); }
   else if(section==='reference'){ renderReference(view); }
+  else if(section==='park'){ renderPark(view); }
   else if(section==='angela'){ renderAngela(view); }
   else if(section==='prompts'){ view.innerHTML=promptsPanel(); }
   renderBedBar();
@@ -1479,6 +1544,135 @@ function refOpen(file){
   refSel=file; var r=REFDATA.filter(function(x){return x.file===file;})[0]; if(!r)return;
   document.getElementById('refbody').innerHTML=refMd(r.body);
   refRenderList(document.getElementById('refq')?document.getElementById('refq').value:'');
+}
+
+// ---- 🚑 Rapid Response inline cards (consult / code) + 🅿️ Park tab ----
+function rrStyle(){ if(document.getElementById('rrstyle'))return;
+  var st=document.createElement('style'); st.id='rrstyle';
+  st.textContent='.rrcard{max-width:820px;margin:4px auto;background:#fff;border:1px solid #cbd5e6;border-radius:8px;padding:16px 20px}'
+   +'.rrcard h2{font-size:16px;color:#12285e;margin:0 0 2px}.rrcard .sub{color:#667;font-size:12px;margin-bottom:10px}'
+   +'.rrrow{display:flex;gap:10px;margin:7px 0;align-items:flex-start}.rrrow .k{flex:0 0 130px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:#8a97a8;padding-top:3px}'
+   +'.rrrow .v{flex:1;min-width:0;font-size:13.5px;line-height:1.45;border:1px solid #e7eef9;border-radius:5px;padding:5px 8px;background:#fcfdff}'
+   +'.rrrow .v:focus{outline:none;border-color:#1a73e8;background:#fff}'
+   +'.rrout{display:flex;gap:6px;flex-wrap:wrap}.rrob{font-size:12px;font-weight:700;padding:4px 12px;border-radius:14px;border:1.5px solid #cbd5e6;background:#fff;cursor:pointer;color:#556}'
+   +'.rrob.on-admit{background:#d9342b;border-color:#d9342b;color:#fff}.rrob.on-watch{background:#e0b020;border-color:#e0b020;color:#3a2c00}.rrob.on-decline{background:#667;border-color:#667;color:#fff}'
+   +'.rrsafety{background:#fff4e5;border-left:4px solid #e0b020;border-radius:0 6px 6px 0;padding:8px 12px;margin-top:8px;font-size:12.5px;color:#7a5a00}'
+   +'.rrbtns{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap}.rrbtns button{font:inherit;font-size:12.5px;font-weight:700;border:0;border-radius:6px;padding:6px 12px;cursor:pointer}'
+   +'.rrbtns .copy{background:#1a73e8;color:#fff}.rrbtns .send{background:#6e40c9;color:#fff}.rrbtns .del{background:#f3f4f7;color:#933}'
+   +'.parkwrap{max-width:900px;margin:4px auto}.parkitem{background:#fff;border:1px solid #cbd5e6;border-radius:8px;padding:11px 14px;margin:8px 0;display:flex;gap:12px;align-items:flex-start}'
+   +'.parkitem .pi-main{flex:1;min-width:0}.parkitem .pi-u{display:inline-block;font-size:10px;font-weight:800;background:#12285e;color:#fff;border-radius:4px;padding:1px 7px;margin-right:6px}'
+   +'.parkitem .pi-sub{font-size:13.5px;color:#12213f;font-weight:600}.parkitem .pi-meta{font-size:11px;color:#889;margin-top:2px}.parkitem .pi-btns{display:flex;gap:6px;flex-wrap:wrap}'
+   +'.parkitem button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:5px 10px;cursor:pointer}.parkitem .act{background:#1f8a4c;color:#fff}.parkitem .cpy{background:#1a73e8;color:#fff}.parkitem .del{background:#f3f4f7;color:#933}';
+  document.head.appendChild(st); }
+function rrGet(k){ return (beds[k]&&beds[k].d)||{}; }
+function erow(k,label,field,val){ return '<div class="rrrow"><span class="k">'+label+'</span><span class="v" contenteditable="true" data-rf="'+field+'">'+esc(val||'')+'</span></div>'; }
+function rrCardHTML(k){
+  rrStyle(); var w=beds[k], d=w.d||{}, isC=w.kind==='consult';
+  var t=new Date(w.ts); var tl=(isNaN(t)?'':t.toLocaleString());
+  var h='<div class="rrcard" data-k="'+k+'">';
+  if(isC){
+    h+='<h2>🩺 Ward Consult</h2><div class="sub">'+esc(tl)+'</div>';
+    h+=erow(k,'Location',   'location', d.location);
+    h+=erow(k,'Age / Sex',  'age_sex',  d.age_sex);
+    h+=erow(k,'Reason',     'reason',   d.reason);
+    h+=erow(k,'Background',  'background',d.background);
+    h+=erow(k,'Assessment', 'assessment',d.assessment);
+    var oc=(d.outcome||'').toLowerCase();
+    h+='<div class="rrrow"><span class="k">Outcome</span><div class="v" style="border:0;background:none;padding:0"><div class="rrout">'
+      +['admit','watch','decline'].map(function(o){return '<button class="rrob'+(oc===o?' on-'+o:'')+'" onclick="rrSetOutcome(\''+k+'\',\''+o+'\')">'+o.toUpperCase()+'</button>';}).join('')+'</div></div></div>';
+    if(oc==='admit') h+=erow(k,'Admit to','dest_unit',d.dest_unit);
+    if(oc==='decline') h+=erow(k,'Not ICU because','not_candidate_reason',d.not_candidate_reason);
+    h+=erow(k,'Plan',       'plan',     d.plan);
+    h+=erow(k,'Return precautions','return_precautions',d.return_precautions);
+    if(oc==='decline') h+='<div class="rrsafety">⚠ Not an ICU candidate at this point'+(d.not_candidate_reason?' ('+esc(d.not_candidate_reason)+')':'')+'. If '+(esc(d.return_precautions)||'condition changes')+' → recontact the ICU team.</div>';
+    else if(oc==='admit') h+='<div class="rrsafety">→ Admitting to '+(esc(d.dest_unit)||'unit')+'. Do a separate <b>icu admission Bed N:</b> for the full note.</div>';
+  } else {
+    h+='<h2>🚑 Code Blue</h2><div class="sub">'+esc(tl)+'</div>';
+    h+=erow(k,'Location','location',d.location);
+    h+=erow(k,'Age / Sex','age_sex',d.age_sex);
+    h+=erow(k,'Found','found',d.found);
+    h+=erow(k,'Initial rhythm','initial_rhythm',d.initial_rhythm);
+    h+=erow(k,'Downtime (min)','downtime_min',d.downtime_min);
+    h+=erow(k,'CPR (min)','cpr_min',d.cpr_min);
+    h+=erow(k,'Interventions','interventions',Array.isArray(d.interventions)?d.interventions.join(' · '):d.interventions);
+    h+=erow(k,'ROSC','rosc',(d.rosc===true?'Yes':(d.rosc===false?'No':d.rosc))+(d.rosc_time?' @ '+d.rosc_time:''));
+    h+=erow(k,'Outcome','outcome',d.outcome);
+    h+=erow(k,'Dispo','dispo',d.dispo);
+    h+=erow(k,'Summary','summary',d.summary);
+  }
+  h+='<div class="rrbtns"><button class="copy" onclick="rrCopy(\''+k+'\')">📋 Copy note</button>'
+    +'<button class="del" onclick="rrDelete(\''+k+'\')">🗑 Delete entry</button></div></div>';
+  return h;
+}
+function bindRRCard(k){
+  var view=document.getElementById('view');
+  view.querySelectorAll('[data-rf]').forEach(function(el){
+    el.addEventListener('input', function(){ var f=el.getAttribute('data-rf'); var v=el.textContent.replace(/\s+/g,' ').trim();
+      if(!beds[k])return; beds[k].d=beds[k].d||{};
+      if(f==='interventions') beds[k].d[f]=v.split(' · ').filter(Boolean); else beds[k].d[f]=v;
+      clearTimeout(window._rrsave); window._rrsave=setTimeout(save,600);
+    });
+  });
+}
+function rrSetOutcome(k,o){ if(!beds[k])return; beds[k].d=beds[k].d||{}; beds[k].d.outcome=o; save(); renderView(); }
+function rrCopy(k){ var w=beds[k], d=w.d||{}, t=new Date(w.ts), tl=(isNaN(t)?'':t.toLocaleString()); var s;
+  if(w.kind==='consult'){ var oc=(d.outcome||'').toLowerCase();
+    s='RAPID RESPONSE CONSULT — '+tl+'\n'
+     +'Location: '+(d.location||'')+' · '+(d.age_sex||'')+'\n'
+     +'Reason for consult: '+(d.reason||'')+'\n'
+     +(d.background?'Background: '+d.background+'\n':'')
+     +'Assessment: '+(d.assessment||'')+'\n'
+     +'Outcome: '+(oc==='admit'?('ADMIT to '+(d.dest_unit||'ICU')):oc==='watch'?'WATCH / reassess':'NOT for ICU at this time')+'\n'
+     +(d.plan?'Plan: '+d.plan+'\n':'')
+     +(oc==='decline'?('Not an ICU candidate at this point'+(d.not_candidate_reason?' ('+d.not_candidate_reason+')':'')+'. If '+(d.return_precautions||'condition changes')+' → recontact ICU team.\n'):'')
+     +(oc!=='decline'&&d.return_precautions?('Return precautions: '+d.return_precautions+'\n'):'');
+  } else {
+    s='CODE BLUE — '+tl+'\nLocation: '+(d.location||'')+' · '+(d.age_sex||'')+'\n'
+     +(d.found?'Found: '+d.found+'\n':'')
+     +'Initial rhythm: '+(d.initial_rhythm||'?')+' · downtime ~'+(d.downtime_min||'?')+' min · CPR '+(d.cpr_min||'?')+' min\n'
+     +'Interventions: '+(Array.isArray(d.interventions)?d.interventions.join(', '):(d.interventions||''))+'\n'
+     +'ROSC: '+(d.rosc===true?('Yes'+(d.rosc_time?' @ '+d.rosc_time:'')):(d.rosc===false?'No':(d.rosc||'?')))+'\n'
+     +'Outcome: '+(d.outcome||'')+' · Dispo: '+(d.dispo||'')+'\n'+(d.summary?d.summary+'\n':'');
+  }
+  copyText(s); flashMsg('📋 Note copied');
+}
+function rrDelete(k){ if(!confirm('Delete this Rapid Response entry?'))return; delete beds[k]; if(current===k)current=null; save(); renderRail(); renderView(); }
+function copyText(s){ try{ navigator.clipboard.writeText(s); }catch(e){ var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e2){} document.body.removeChild(ta); } }
+function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent=t; } }
+
+function renderPark(view){
+  rrStyle();
+  var bar='<div id="hvbar"><b>🅿️ Park — prep drafts</b> <span style="color:#667">'+parkData.length+' parked · stable-fields drafts you finish day-of</span>'
+    +'<span class="hvsp"></span><button class="sec2" onclick="parkPull(function(){renderView();})">↻ refresh</button></div>';
+  var body='<div class="parkwrap">';
+  if(!parkData.length){ body+='<div class="stub" style="padding:24px">No parked drafts. The day before a unit shift, run <b>icu prep: Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.</div>'; }
+  parkData.slice().sort(function(a,b){return (b.savedAt||'').localeCompare(a.savedAt||'');}).forEach(function(p){
+    var d=p.d||{}, when=(p.savedAt||'').slice(0,10);
+    body+='<div class="parkitem"><div class="pi-main">'
+      +'<div><span class="pi-u">'+esc((p.unit||d.unit||'?').toString().toUpperCase())+'</span>'
+      +'<span class="pi-sub">'+esc(d.age_sex||'')+(d.subtitle?' · '+esc(d.subtitle):'')+(d.bed?' · bed '+esc(''+d.bed):'')+'</span></div>'
+      +'<div class="pi-meta">parked '+esc(when)+(d.icu_admit?' · ICU admit '+esc(d.icu_admit):'')+'</div></div>'
+      +'<div class="pi-btns"><button class="act" onclick="activatePark(\''+p.id+'\')">⬆ Activate</button>'
+      +'<button class="cpy" onclick="copyPark(\''+p.id+'\')">📋 Copy prep JSON</button>'
+      +'<button class="del" onclick="if(confirm(\'Remove this parked draft?\'))parkRemove(\''+p.id+'\'),renderView()">🗑</button></div></div>';
+  });
+  body+='</div>';
+  view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div style="flex:1;overflow:auto;padding:12px 14px">'+body+'</div></div>';
+}
+function copyPark(id){ var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return; copyText(JSON.stringify(p.d,null,2)); flashMsg('📋 Prep JSON copied — paste into an "icu daily update Bed N:" chat with the new day\'s data'); }
+function activatePark(id){
+  var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return;
+  var d=p.d||{}, u=normUnit(d.unit); if(!UNITS[u]){ u=prompt('Which unit? (MICU/SICU/CCU/PICU/CSU/MSU)','')||''; u=normUnit(u); if(!UNITS[u]){alert('Unknown unit.');return;} }
+  var n=prompt('Activate "'+((d.age_sex||'')+(d.subtitle?' · '+d.subtitle:''))+'"\n\nInto '+u+' — bed number?', d.bed||'');
+  if(n===null)return; n=String(n).trim(); if(!n){alert('Need a bed number.');return;}
+  captureCurrentBed();
+  unit=u; try{localStorage.setItem('ub_last_unit',unit);}catch(e){} document.getElementById('unitSel').value=unit;
+  load();
+  var nd=JSON.parse(JSON.stringify(d)); delete nd.prep; delete nd.prep_date; nd.bed=n; if(!nd.note_type)nd.note_type='daily';
+  beds[n]={ d:nd, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
+  save(); parkRemove(id);
+  current=n; section='daily'; setTab('daily'); renderRail(); renderView(); if(syncOn())syncPull();
+  flashMsg('✓ Activated to '+u+' bed '+n+' — now run "icu daily update Bed '+n+':" with today\'s data to consolidate.');
 }
 
 function promptsPanel(){
