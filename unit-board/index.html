@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.56 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.57 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1701,6 +1701,11 @@ function promptsPanel(){
     ['icu admission Bed N:','New ICU admission note (+ handover card).'],
     ['icu admission update Bed N:','Update an admission note.'],
     ['icu admission Bed unassigned:','Admission with no bed yet → Unassigned area (also accepts "pending").'],
+    ['icu consult:','🚑 Rapid Response ward consult → timestamped card in the Rapid Response view. States reason + outcome (admit / watch / decline); a decline auto-adds the return-precautions safety-net line. Paste JSON (± photo).'],
+    ['icu code blue:','🚑 Code-blue capture — paste the code-sheet photo → concise card (rhythm · downtime · ROSC · interventions · dispo). Lives in Rapid Response.'],
+    ['icu prep Bed N:','🅿️ Next-day PARK draft — stable fields only (history / course / PMHx). Paste → Park tab; day-of Activate → "icu daily update Bed N:" merges the day\'s data (consolidates the note).'],
+    ['(unit) Rapid Response','Pick from the Unit dropdown (auto-selected on RR days). A timestamped worklist of your consults / codes / admissions — all kept here, revisit/edit by time; own History per shift.'],
+    ['(tab) 🅿️ Park','Parked prep drafts. Activate one day-of → it lands on its unit as a pre-round bed. "Clear → archive" starts a fresh list without deleting (Archived + Restore).'],
     ['handover bed N:','COLLEAGUE bed you did NOT chart → the FAST path: one condensed full-quality card (hv:1), no full note. Paste JSON → appears on Handover tab.'],
     ['handover beds:','Several colleague beds at once → ONE JSON array → ONE paste loads them all. The quick way to cover a colleague’s whole list.'],
     ['(tab) Handover','Your handover — auto-compiles from every bed you entered. No prompt, no paste. This is the primary handover; just open the tab.'],
