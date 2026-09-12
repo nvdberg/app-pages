@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.58 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.59 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1655,7 +1655,10 @@ function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent
 var parkView='active';
 function setParkView(v){ parkView=v; renderView(); }
 // human summary of a parked draft: ICU day (as parked) · admit · working dx · what's been done · plan
-function parkDayCount(d, asOf){ if(!d||!d.icu_admit)return null; var a=new Date(d.icu_admit), t=asOf?new Date(asOf):new Date(); if(isNaN(a))return null; a.setHours(0,0,0,0); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?null:n; }
+function parkLocalMidnight(s){ var m=String(s).match(/(\d{4})-(\d{2})-(\d{2})/); if(!m)return null; return new Date(+m[1],+m[2]-1,+m[3]); }   // parse date-only as LOCAL midnight (avoid UTC off-by-one in UTC−6)
+function parkDayCount(d, asOf){ if(!d||!d.icu_admit)return null; var a=parkLocalMidnight(d.icu_admit); if(!a)return null;
+  var t=asOf?new Date(asOf):new Date(); if(isNaN(t))t=new Date(); t.setHours(0,0,0,0);   // local midnight of the as-of day
+  var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?null:n; }
 function parkLines(v){ if(!v)return []; return (Array.isArray(v)?v:String(v).split(/\r?\n/)).map(function(x){return (''+x).replace(/\s+/g,' ').trim();}).filter(Boolean); }
 function parkSummary(p){ var d=p.d||{};
   var active=(d.problems||[]).filter(function(x){return x&&x.name&&x.type!=='goc'&&x.type!=='dispo';});
