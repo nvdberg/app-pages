@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.60 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.61 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1004,7 +1004,17 @@ function renderRail(){
 function renderBedBar(){
   var bar=document.getElementById('bedbar');
   if(section!=='daily' || current==null || !beds[current]){ bar.style.display='none'; bar.innerHTML=''; return; }
-  if(beds[current].rr){ bar.style.display='none'; bar.innerHTML=''; return; }   // RR entries carry their own card actions (Copy/Delete/Send)
+  if(beds[current].rr){
+    var rw=beds[current];
+    if(rw.kind==='consult'||rw.kind==='code'){ bar.style.display='none'; bar.innerHTML=''; return; }   // consult/code cards carry their own Copy/Delete
+    // daily/admission pasted into RR → slim bar so it's deletable (+ optional send-to-unit for admissions)
+    bar.style.display='flex';
+    bar.innerHTML='<span class="bbtag">'+(RR_ICON[rw.kind]||'📝')+' '+esc(rw.kind||'entry')+' '+esc(rrTime(rw.ts))+'</span>'
+      +((rw.d&&rw.d.note_type==='admission'&&UNITS[normUnit(rw.d.unit)])?'<button class="sec" onclick="rrSendToUnit(\''+current+'\')" title="Also place this admission on its unit board (RR copy stays)">⇧ Send to '+esc((''+rw.d.unit).toUpperCase())+' board</button>':'')
+      +'<button class="sec" style="color:#933" onclick="rrDelete(\''+current+'\')">🗑 Delete entry</button>'
+      +'<span class="spacer"></span>'+provChip(rw.d||{});
+    return;
+  } (Copy/Delete/Send)
   var w=beds[current], d=w.d||{}, done=w.taskDone||[];
   var isUn=/^U\d+$/.test(String(current));
   var tag=isUn?String(current).replace('U','Unassigned '):('Bed '+current);
@@ -1650,6 +1660,16 @@ function rrCopy(k){ var w=beds[k], d=w.d||{}, t=new Date(w.ts), tl=(isNaN(t)?'':
   copyText(s); flashMsg('📋 Note copied');
 }
 function rrDelete(k){ if(!confirm('Delete this Rapid Response entry?'))return; delete beds[k]; if(current===k)current=null; save(); renderRail(); renderView(); }
+// optional: also place an RR admission onto its destination unit board (the RR copy stays under RR)
+function rrSendToUnit(k){ var w=beds[k]; if(!w||!w.d)return; var d=w.d, u=normUnit(d.unit);
+  if(!UNITS[u]){ alert('This entry has no known destination unit.'); return; }
+  if(!confirm('Also place this admission on the '+u+' board? (Your Rapid Response copy stays here.)'))return;
+  var keepUnit=unit, keepCur=current;
+  unit=u; document.getElementById('unitSel').value=u; load();
+  routeEntry(JSON.parse(JSON.stringify(d)));   // files it on the unit board (by bed, or Unassigned if none)
+  save();
+  unit=keepUnit; document.getElementById('unitSel').value=keepUnit; current=keepCur; load(); renderRail(); renderView();
+  flashMsg('⇧ Sent to '+u+' board — your RR copy is unchanged.'); }
 function copyText(s){ try{ navigator.clipboard.writeText(s); }catch(e){ var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e2){} document.body.removeChild(ta); } }
 function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent=t; } }
 
