@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.54 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.55 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -889,20 +889,29 @@ function syncPull(cb){ if(!syncOn()){cb&&cb();return;}
 function startSyncPoll(){ clearInterval(syncTimer); if(syncOn()) syncTimer=setInterval(function(){ syncPull(); if(section==='park')parkPull(); }, 10000); }
 
 // ---- Park store (prep drafts) — cross-unit, cross-device (own Supabase row unit=__PARK__) ----
-var parkData=[];
-function parkLoad(){ try{ var raw=localStorage.getItem('ub_park'); parkData=raw?JSON.parse(raw):[]; }catch(e){ parkData=[]; } }
-function parkSaveLocal(){ try{ localStorage.setItem('ub_park', JSON.stringify(parkData)); }catch(e){} }
+// parkData = ACTIVE parked drafts; parkHist = ARCHIVE (activated / cleared) so nothing is lost. Both sync.
+var parkData=[], parkHist=[];
+function parkLoad(){ try{ parkData=JSON.parse(localStorage.getItem('ub_park')||'[]'); }catch(e){ parkData=[]; }
+  try{ parkHist=JSON.parse(localStorage.getItem('ub_park_hist')||'[]'); }catch(e){ parkHist=[]; } }
+function parkSaveLocal(){ try{ localStorage.setItem('ub_park', JSON.stringify(parkData)); localStorage.setItem('ub_park_hist', JSON.stringify(parkHist)); }catch(e){} }
 function parkAdd(d){ var id='p'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36);
   parkData.push({ id:id, d:d, unit:(d&&normUnit(d.unit))||'', savedAt:new Date().toISOString() });
   parkSaveLocal(); parkPush(); return id; }
-function parkRemove(id){ parkData=parkData.filter(function(p){return p.id!==id;}); parkSaveLocal(); parkPush(); }
+function parkArchive(id,how){ var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return;
+  p.archivedAt=new Date().toISOString(); p.how=how||'archived'; parkHist.unshift(p); parkHist=parkHist.slice(0,60);   // keep last 60
+  parkData=parkData.filter(function(x){return x.id!==id;}); parkSaveLocal(); parkPush(); }
+function parkClearAll(){ if(!parkData.length)return;
+  parkData.forEach(function(p){ p.archivedAt=new Date().toISOString(); p.how='cleared'; parkHist.unshift(p); });
+  parkHist=parkHist.slice(0,60); parkData=[]; parkSaveLocal(); parkPush(); }
+function parkRestore(id){ var p=parkHist.filter(function(x){return x.id===id;})[0]; if(!p)return;
+  delete p.archivedAt; delete p.how; parkData.push(p); parkHist=parkHist.filter(function(x){return x.id!==id;}); parkSaveLocal(); parkPush(); }
 function parkPush(){ if(!syncOn())return;
   fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),
-    body:JSON.stringify({space:syncSpace,unit:'__PARK__',date:'all',data:{park:parkData},updated_at:new Date().toISOString()})}).catch(function(){}); }
+    body:JSON.stringify({space:syncSpace,unit:'__PARK__',date:'all',data:{park:parkData,hist:parkHist},updated_at:new Date().toISOString()})}).catch(function(){}); }
 function parkPull(cb){ if(!syncOn()){cb&&cb();return;}
   var q=SB_URL+'?select=data&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.__PARK__&date=eq.all';
   fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
-    if(rows&&rows[0]&&rows[0].data&&Array.isArray(rows[0].data.park)){ parkData=rows[0].data.park; parkSaveLocal(); if(section==='park')renderView(); }
+    if(rows&&rows[0]&&rows[0].data){ if(Array.isArray(rows[0].data.park))parkData=rows[0].data.park; if(Array.isArray(rows[0].data.hist))parkHist=rows[0].data.hist; parkSaveLocal(); if(section==='park')renderView(); }
     cb&&cb();
   }).catch(function(){ cb&&cb(); }); }
 function syncSetup(){
@@ -1640,26 +1649,36 @@ function rrDelete(k){ if(!confirm('Delete this Rapid Response entry?'))return; d
 function copyText(s){ try{ navigator.clipboard.writeText(s); }catch(e){ var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e2){} document.body.removeChild(ta); } }
 function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent=t; } }
 
+var parkView='active';
+function setParkView(v){ parkView=v; renderView(); }
 function renderPark(view){
   rrStyle();
-  var bar='<div id="hvbar"><b>🅿️ Park — prep drafts</b> <span style="color:#667">'+parkData.length+' parked · stable-fields drafts you finish day-of</span>'
-    +'<span class="hvsp"></span><button class="sec2" onclick="parkPull(function(){renderView();})">↻ refresh</button></div>';
+  var showing=parkView==='archived';
+  var bar='<div id="hvbar"><b>🅿️ Park — prep drafts</b> <span style="color:#667">'+parkData.length+' active · '+parkHist.length+' archived</span>'
+    +'<span class="hvsp"></span>'
+    +'<button class="sec2" onclick="setParkView(\'active\')"'+(!showing?' style="font-weight:800"':'')+'>Active ('+parkData.length+')</button>'
+    +'<button class="sec2" onclick="setParkView(\'archived\')"'+(showing?' style="font-weight:800"':'')+'>📜 Archived ('+parkHist.length+')</button>'
+    +(!showing&&parkData.length?'<button class="sec2" style="color:#933" onclick="if(confirm(\'Clear all '+parkData.length+' parked draft(s)? They move to Archived (not deleted) — use this to start fresh for a new shift.\')){parkClearAll();renderView();}">🧹 Clear → archive</button>':'')
+    +'<button class="sec2" onclick="parkPull(function(){renderView();})">↻ refresh</button></div>';
+  var list=showing?parkHist:parkData;
   var body='<div class="parkwrap">';
-  if(!parkData.length){ body+='<div class="stub" style="padding:24px">No parked drafts. The day before a unit shift, run <b>icu prep: Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.</div>'; }
-  parkData.slice().sort(function(a,b){return (b.savedAt||'').localeCompare(a.savedAt||'');}).forEach(function(p){
+  if(!list.length){ body+='<div class="stub" style="padding:24px">'+(showing?'No archived drafts yet. Activated or cleared parks land here — nothing is lost.':'No parked drafts. The day before a unit shift, run <b>icu prep: Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.')+'</div>'; }
+  list.slice().sort(function(a,b){return ((b.archivedAt||b.savedAt)||'').localeCompare((a.archivedAt||a.savedAt)||'');}).forEach(function(p){
     var d=p.d||{}, when=(p.savedAt||'').slice(0,10);
-    body+='<div class="parkitem"><div class="pi-main">'
+    body+='<div class="parkitem"'+(showing?' style="opacity:.75"':'')+'><div class="pi-main">'
       +'<div><span class="pi-u">'+esc((p.unit||d.unit||'?').toString().toUpperCase())+'</span>'
       +'<span class="pi-sub">'+esc(d.age_sex||'')+(d.subtitle?' · '+esc(d.subtitle):'')+(d.bed?' · bed '+esc(''+d.bed):'')+'</span></div>'
-      +'<div class="pi-meta">parked '+esc(when)+(d.icu_admit?' · ICU admit '+esc(d.icu_admit):'')+'</div></div>'
-      +'<div class="pi-btns"><button class="act" onclick="activatePark(\''+p.id+'\')">⬆ Activate</button>'
-      +'<button class="cpy" onclick="copyPark(\''+p.id+'\')">📋 Copy prep JSON</button>'
-      +'<button class="del" onclick="if(confirm(\'Remove this parked draft?\'))parkRemove(\''+p.id+'\'),renderView()">🗑</button></div></div>';
+      +'<div class="pi-meta">parked '+esc(when)+(d.icu_admit?' · ICU admit '+esc(d.icu_admit):'')+(showing?' · '+esc(p.how||'archived')+' '+esc((p.archivedAt||'').slice(0,10)):'')+'</div></div>'
+      +'<div class="pi-btns">'
+      +(showing
+          ? '<button class="cpy" onclick="copyPark(\''+p.id+'\',1)">📋 Copy JSON</button><button class="act" onclick="parkRestore(\''+p.id+'\');renderView()">♻ Restore</button>'
+          : '<button class="act" onclick="activatePark(\''+p.id+'\')">⬆ Activate</button><button class="cpy" onclick="copyPark(\''+p.id+'\')">📋 Copy prep JSON</button><button class="del" onclick="if(confirm(\'Archive this parked draft? (recoverable under Archived)\')){parkArchive(\''+p.id+'\',\'removed\');renderView();}">🗑</button>')
+      +'</div></div>';
   });
   body+='</div>';
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div style="flex:1;overflow:auto;padding:12px 14px">'+body+'</div></div>';
 }
-function copyPark(id){ var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return; copyText(JSON.stringify(p.d,null,2)); flashMsg('📋 Prep JSON copied — paste into an "icu daily update Bed N:" chat with the new day\'s data'); }
+function copyPark(id,fromHist){ var src=fromHist?parkHist:parkData; var p=src.filter(function(x){return x.id===id;})[0]; if(!p)return; copyText(JSON.stringify(p.d,null,2)); flashMsg('📋 Prep JSON copied — paste into an "icu daily update Bed N:" chat with the new day\'s data'); }
 function activatePark(id){
   var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return;
   var d=p.d||{}, u=normUnit(d.unit); if(!UNITS[u]){ u=prompt('Which unit? (MICU/SICU/CCU/PICU/CSU/MSU)','')||''; u=normUnit(u); if(!UNITS[u]){alert('Unknown unit.');return;} }
@@ -1670,7 +1689,7 @@ function activatePark(id){
   load();
   var nd=JSON.parse(JSON.stringify(d)); delete nd.prep; delete nd.prep_date; nd.bed=n; if(!nd.note_type)nd.note_type='daily';
   beds[n]={ d:nd, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
-  save(); parkRemove(id);
+  save(); parkArchive(id,'activated');
   current=n; section='daily'; setTab('daily'); renderRail(); renderView(); if(syncOn())syncPull();
   flashMsg('✓ Activated to '+u+' bed '+n+' — now run "icu daily update Bed '+n+':" with today\'s data to consolidate.');
 }
