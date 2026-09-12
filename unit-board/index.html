@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.52 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.53 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -775,8 +775,67 @@ function init(){
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
   if(syncOn()){ syncPull(); startSyncPoll(); }
+  detectShift();   // fetch on-call schedule → pre-select today's unit (async, non-blocking; dropdown always overrides)
 }
-function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; try{localStorage.setItem('ub_last_unit',unit);}catch(e){} beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
+function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; try{localStorage.setItem('ub_last_unit',unit);}catch(e){}
+  try{ localStorage.setItem('ub_shiftpick_'+isoToday(), '1'); }catch(e){}   // user chose manually today → don't let shift-detect snap it back on reload
+  beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull(); }
+
+// ---- On-call schedule auto-detect (public iCal feed) — pre-select today's unit; dropdown always overrides ----
+var SHIFT_ICS='https://qbtnxkzpddexczhcvxre.supabase.co/storage/v1/object/public/calendars/wb-nvdb-09e26658c4a643a6.ics';
+var SHIFT_TZ_OFF=-6;   // Regina is UTC−6 all year (no DST)
+// SUMMARY (emoji + unit) → {unit:<board dropdown key or null>, label}. Matched on TEXT (robust to emoji encoding).
+function shiftMap(summary){
+  var s=String(summary||'');
+  if(/pasqua[\s-]*rapid|(^|[^-])\bMSU\b/i.test(s) && /MSU|pasqua/i.test(s)) return {unit:'MSU', label:'Pasqua-Rapid / MSU (day+night)'};
+  if(/PHICU|\bPICU/i.test(s)) return {unit:'PICU+PICUSU', label:'PHICU (24h call)'};
+  if(/\bMICU\b/i.test(s)) return {unit:'MICU', label:'MICU (24h call)'};
+  if(/\bSICU\b/i.test(s)) return {unit:'SICU', label:'SICU (24h call)'};
+  if(/\bCCU\b/i.test(s))  return {unit:'CCU',  label:'CCU (24h call)'};
+  if(/\bRR\b|rapid\s*response/i.test(s)) return {unit:null, label:'Rapid Response (day 08:00–17:00)'};  // not a unit board
+  return {unit:null, label:s.replace(/^[^\w]+/,'').trim()||'(shift)'};
+}
+// find the event whose LOCAL (UTC−6) start-date equals today's shift date; return {map, ev} or null
+function shiftForToday(ics){
+  var today=shiftNow(); var ty=today.getFullYear(), tm=today.getMonth(), td=today.getDate();
+  var evs=ics.split(/BEGIN:VEVENT/).slice(1), hit=null;
+  evs.forEach(function(block){
+    var ds=(block.match(/DTSTART[^:]*:(\d{8}T\d{6}Z)/)||[])[1];
+    var sm=(block.match(/SUMMARY:(.*)/)||[])[1];
+    if(!ds||!sm) return;
+    var m=ds.match(/^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)Z$/);
+    var loc=new Date(Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]) + SHIFT_TZ_OFF*3600000);
+    if(loc.getUTCFullYear()===ty && loc.getUTCMonth()===tm && loc.getUTCDate()===td) hit={map:shiftMap(sm.trim()), sum:sm.trim()};
+  });
+  return hit;
+}
+function shiftBanner(html,tone){
+  var b=document.getElementById('shiftBanner');
+  if(!b){ b=document.createElement('span'); b.id='shiftBanner';
+    b.style.cssText='font-size:11px;padding:2px 9px;border-radius:10px;margin-left:6px;white-space:nowrap';
+    var sy=document.getElementById('syncst'); if(sy&&sy.parentNode) sy.parentNode.insertBefore(b, sy.nextSibling); else return; }
+  b.style.background = tone==='on'?'#eaf7ee':(tone==='off'?'#f0f0f4':'#fff4e5');
+  b.style.color = tone==='on'?'#1f6b3a':(tone==='off'?'#667':'#8a5a00');
+  b.innerHTML=html;
+}
+function detectShift(){
+  if(isoToday()!==viewIso) return;                       // only auto-detect when viewing today, not history
+  fetch(SHIFT_ICS,{cache:'no-store'}).then(function(r){return r.text();}).then(function(ics){
+    var hit=shiftForToday(ics);
+    if(!hit){ shiftBanner('📅 Off today (per schedule)','off'); return; }
+    var m=hit.map;
+    if(!m.unit){ shiftBanner('📅 Today: '+esc(m.label)+' — no unit board; pick a unit if admitting','warn'); return; }
+    var picked=false; try{ picked=localStorage.getItem('ub_shiftpick_'+isoToday())==='1'; }catch(e){}
+    if(m.unit===unit){ shiftBanner('📅 On call: '+esc(m.label)+' ✓','on'); return; }
+    if(picked){ shiftBanner('📅 Schedule: '+esc(m.label)+' · <a href="#" onclick="gotoShiftUnit(\''+m.unit+'\');return false" style="color:inherit;font-weight:700">switch</a>','warn'); return; }
+    // auto-select the scheduled unit (user hasn't manually picked today) — dropdown still overrides
+    var sel=document.getElementById('unitSel'); if(sel){ sel.value=m.unit; }
+    unit=m.unit; try{localStorage.setItem('ub_last_unit',unit);}catch(e){}
+    beds={}; current=null; load(); renderRail(); showSec('daily'); if(syncOn())syncPull();
+    shiftBanner('📅 On call today: '+esc(m.label)+' — selected','on');
+  }).catch(function(){ /* offline / CORS / hospital egress — silently keep remembered unit */ });
+}
+function gotoShiftUnit(u){ var sel=document.getElementById('unitSel'); if(sel){ sel.value=u; } try{localStorage.removeItem('ub_shiftpick_'+isoToday());}catch(e){} switchUnit(); detectShift(); }
 
 function load(){
   try{ var raw=localStorage.getItem(storeKey()); beds=raw?JSON.parse(raw):{}; }catch(e){ beds={}; }
