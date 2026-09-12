@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.61 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.62 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1583,9 +1583,12 @@ function rrStyle(){ if(document.getElementById('rrstyle'))return;
    +'.parkitem .pi-main{flex:1;min-width:0}.parkitem .pi-u{display:inline-block;font-size:10px;font-weight:800;background:#12285e;color:#fff;border-radius:4px;padding:1px 7px;margin-right:6px}'
    +'.parkitem .pi-sub{font-size:13.5px;color:#12213f;font-weight:600}.parkitem .pi-meta{font-size:11px;color:#889;margin-top:2px}.parkitem .pi-btns{display:flex;gap:6px;flex-wrap:wrap}'
    +'.parkitem button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:5px 10px;cursor:pointer}.parkitem .act{background:#1f8a4c;color:#fff}.parkitem .cpy{background:#1a73e8;color:#fff}.parkitem .del{background:#f3f4f7;color:#933}'
-   +'.pi-sum{margin-top:7px;border-top:1px solid #eef2f8;padding-top:6px}.pi-line{font-size:12.5px;line-height:1.45;margin:2px 0;color:#26324a}'
-   +'.pi-lbl{display:inline-block;min-width:70px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#8a97a8;margin-right:6px;vertical-align:top}'
-   +'.pi-goc{font-size:10px;font-weight:800;background:#eef2ff;color:#12285e;border-radius:4px;padding:0 5px}';
+   +'.pi-sum{margin-top:9px;border-top:1px solid #eef2f8;padding-top:8px;display:flex;flex-direction:column;gap:8px}'
+   +'.pi-row{display:block}.pi-lbl{display:block;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#9aa6b6;margin-bottom:3px}'
+   +'.pi-dx{font-size:14px;font-weight:700;color:#12213f;line-height:1.35}'
+   +'.pi-ul{list-style:none;margin:0;padding:0}.pi-ul li{position:relative;font-size:12.5px;line-height:1.5;color:#31405c;padding:1px 0 1px 14px}'
+   +'.pi-ul li:before{content:"";position:absolute;left:3px;top:9px;width:4px;height:4px;border-radius:50%;background:#c2ccdb}'
+   +'.pi-goc{display:inline-block;font-size:10px;font-weight:800;background:#eef2ff;color:#12285e;border-radius:4px;padding:0 6px;margin-left:4px;vertical-align:middle}';
   document.head.appendChild(st); }
 function rrGet(k){ return (beds[k]&&beds[k].d)||{}; }
 function erow(k,label,field,val){ return '<div class="rrrow"><span class="k">'+label+'</span><span class="v" contenteditable="true" data-rf="'+field+'">'+esc(val||'')+'</span></div>'; }
@@ -1704,10 +1707,11 @@ function renderPark(view){
   if(!list.length){ body+='<div class="stub" style="padding:24px">'+(showing?'No archived drafts yet. Activated or cleared parks land here — nothing is lost.':'No parked drafts. The day before a unit shift, run <b>icu prep Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.')+'</div>'; }
   list.slice().sort(function(a,b){return ((b.archivedAt||b.savedAt)||'').localeCompare((a.archivedAt||a.savedAt)||'');}).forEach(function(p){
     var d=p.d||{}, when=(p.savedAt||'').slice(0,10), s=parkSummary(p);
+    var bl=function(arr){ return '<ul class="pi-ul">'+arr.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>'; };
     var sumHTML='<div class="pi-sum">'
-      +'<div class="pi-line"><span class="pi-lbl">Working dx</span>'+esc(s.dx||'—')+(s.goc?' <span class="pi-goc">'+esc((''+s.goc).toUpperCase().slice(0,2))+'</span>':'')+'</div>'
-      +(s.done.length?'<div class="pi-line"><span class="pi-lbl">Done</span>'+esc(s.done.join(' · '))+'</div>':'')
-      +(s.plan.length?'<div class="pi-line"><span class="pi-lbl">Plan</span>'+esc(s.plan.join(' · '))+'</div>':'')
+      +'<div class="pi-row"><span class="pi-lbl">Working dx</span><span class="pi-dx">'+esc(s.dx||'—')+(s.goc?' <span class="pi-goc">'+esc((''+s.goc).toUpperCase().slice(0,2))+'</span>':'')+'</span></div>'
+      +(s.done.length?'<div class="pi-row"><span class="pi-lbl">Done</span>'+bl(s.done)+'</div>':'')
+      +(s.plan.length?'<div class="pi-row"><span class="pi-lbl">Plan</span>'+bl(s.plan)+'</div>':'')
       +'</div>';
     body+='<div class="parkitem"'+(showing?' style="opacity:.72"':'')+'><div class="pi-main">'
       +'<div><span class="pi-u">'+esc((p.unit||d.unit||'?').toString().toUpperCase())+'</span>'
