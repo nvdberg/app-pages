@@ -1704,7 +1704,7 @@ function renderPark(view){
     +'<button class="sec2" onclick="parkPull(function(){renderView();})">↻ refresh</button></div>';
   var list=showing?parkHist:parkData;
   var body='<div class="parkwrap">';
-  if(!list.length){ body+='<div class="stub" style="padding:24px">'+(showing?'No archived drafts yet. Activated or cleared parks land here — nothing is lost.':'No parked drafts. The day before a unit shift, run <b>icu prep Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits until you activate it day-of.')+'</div>'; }
+  if(!list.length){ body+='<div class="stub" style="padding:24px">'+(showing?'No archived drafts yet. Cleared parks land here — nothing is lost.':'No parked drafts. The day before a unit shift, run <b>icu prep Bed N:</b> for a complex/long-stay patient, paste the JSON here, and it waits. Next day: <b>📋 Copy prep JSON</b> → paste into an <b>icu daily update Bed N:</b> chat with that day\'s vitals/labs to build the final note.')+'</div>'; }
   list.slice().sort(function(a,b){return ((b.archivedAt||b.savedAt)||'').localeCompare((a.archivedAt||a.savedAt)||'');}).forEach(function(p){
     var d=p.d||{}, when=(p.savedAt||'').slice(0,10), s=parkSummary(p);
     var bl=function(arr){ return '<ul class="pi-ul">'+arr.map(function(x){return '<li>'+esc(x)+'</li>';}).join('')+'</ul>'; };
@@ -1721,27 +1721,13 @@ function renderPark(view){
       +'<div class="pi-btns">'
       +(showing
           ? '<button class="cpy" onclick="copyPark(\''+p.id+'\',1)">📋 Copy JSON</button><button class="act" onclick="parkRestore(\''+p.id+'\');renderView()">♻ Restore</button>'
-          : '<button class="act" onclick="activatePark(\''+p.id+'\')">⬆ Activate</button><button class="cpy" onclick="copyPark(\''+p.id+'\')">📋 Copy prep JSON</button><button class="del" onclick="if(confirm(\'Archive this parked draft? (recoverable under Archived)\')){parkArchive(\''+p.id+'\',\'removed\');renderView();}">🗑</button>')
+          : '<button class="cpy" onclick="copyPark(\''+p.id+'\')">📋 Copy prep JSON → use tomorrow</button><button class="del" onclick="if(confirm(\'Archive this parked draft? (recoverable under Archived)\')){parkArchive(\''+p.id+'\',\'removed\');renderView();}">🗑</button>')
       +'</div></div>';
   });
   body+='</div>';
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div style="flex:1;overflow:auto;padding:12px 14px">'+body+'</div></div>';
 }
 function copyPark(id,fromHist){ var src=fromHist?parkHist:parkData; var p=src.filter(function(x){return x.id===id;})[0]; if(!p)return; copyText(JSON.stringify(p.d,null,2)); flashMsg('📋 Prep JSON copied — paste into an "icu daily update Bed N:" chat with the new day\'s data'); }
-function activatePark(id){
-  var p=parkData.filter(function(x){return x.id===id;})[0]; if(!p)return;
-  var d=p.d||{}, u=normUnit(d.unit); if(!UNITS[u]){ u=prompt('Which unit? (MICU/SICU/CCU/PICU/CSU/MSU)','')||''; u=normUnit(u); if(!UNITS[u]){alert('Unknown unit.');return;} }
-  var n=prompt('Activate "'+((d.age_sex||'')+(d.subtitle?' · '+d.subtitle:''))+'"\n\nInto '+u+' — bed number?', d.bed||'');
-  if(n===null)return; n=String(n).trim(); if(!n){alert('Need a bed number.');return;}
-  captureCurrentBed();
-  unit=u; try{localStorage.setItem('ub_last_unit',unit);}catch(e){} document.getElementById('unitSel').value=unit;
-  load();
-  var nd=JSON.parse(JSON.stringify(d)); delete nd.prep; delete nd.prep_date; nd.bed=n; nd.note_type='daily';   // activation → a real daily bed (force, in case it was note_type:"prep")
-  beds[n]={ d:nd, stay:mintStay(), state:'preround', overnight:'', taskDone:[] };
-  save(); parkArchive(id,'activated');
-  current=n; section='daily'; setTab('daily'); renderRail(); renderView(); if(syncOn())syncPull();
-  flashMsg('✓ Activated to '+u+' bed '+n+' — now run "icu daily update Bed '+n+':" with today\'s data to consolidate.');
-}
 
 function promptsPanel(){
   var rows=[
@@ -1752,9 +1738,9 @@ function promptsPanel(){
     ['icu admission Bed unassigned:','Admission with no bed yet → Unassigned area (also accepts "pending").'],
     ['icu consult:','🚑 Rapid Response ward consult → timestamped card in the Rapid Response view. States reason + outcome (admit / watch / decline); a decline auto-adds the return-precautions safety-net line. Paste JSON (± photo).'],
     ['icu code blue:','🚑 Code-blue capture — paste the code-sheet photo → concise card (rhythm · downtime · ROSC · interventions · dispo). Lives in Rapid Response.'],
-    ['icu prep Bed N:','🅿️ Next-day PARK draft — stable fields only (history / course / PMHx). Paste → Park tab; day-of Activate → "icu daily update Bed N:" merges the day\'s data (consolidates the note).'],
+    ['icu prep Bed N:','🅿️ Next-day PARK draft — stable fields only (history / course / PMHx). Paste → Park tab; day-of hit 📋 Copy prep JSON → paste into an "icu daily update Bed N:" chat with the day\'s vitals/labs → the note consolidates prep + new data.'],
     ['(unit) Rapid Response','Pick from the Unit dropdown (auto-selected on RR days). A timestamped worklist of your consults / codes / admissions — all kept here, revisit/edit by time; own History per shift.'],
-    ['(tab) 🅿️ Park','Parked prep drafts. Activate one day-of → it lands on its unit as a pre-round bed. "Clear → archive" starts a fresh list without deleting (Archived + Restore).'],
+    ['(tab) 🅿️ Park','Parked prep drafts with a summary (ICU day · admit · working dx · done · plan). Day-of: 📋 Copy prep JSON → paste into "icu daily update Bed N:" with the day\'s data. "Clear → archive" starts a fresh list without deleting (Archived + Restore).'],
     ['handover bed N:','COLLEAGUE bed you did NOT chart → the FAST path: one condensed full-quality card (hv:1), no full note. Paste JSON → appears on Handover tab.'],
     ['handover beds:','Several colleague beds at once → ONE JSON array → ONE paste loads them all. The quick way to cover a colleague’s whole list.'],
     ['(tab) Handover','Your handover — auto-compiles from every bed you entered. No prompt, no paste. This is the primary handover; just open the tab.'],
