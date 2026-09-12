@@ -92,7 +92,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.59 · 12-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.60 · 12-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -100,8 +100,9 @@
     <button data-sec="daily" class="on" onclick="showSec('daily')">Daily</button>
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
     <button data-sec="concise" onclick="showSec('concise')">Concise</button>
-    <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
     <button data-sec="park" onclick="showSec('park')">🅿️ Park</button>
+    <span style="display:inline-block;width:22px"></span>
+    <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
     <button data-sec="angela" id="angtab" onclick="showSec('angela')" hidden>Angela</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
     <label id="anglbl" style="display:flex;align-items:center;gap:3px;margin-left:6px;font-size:11px;color:#cfe0ff;cursor:pointer" title="Angela handover — engineer-style terse view with status boxes"><input type="checkbox" id="angchk" onchange="toggleAngela()" style="cursor:pointer"> 🔬 Angela</label>
