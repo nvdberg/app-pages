@@ -106,7 +106,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.68 · 14-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.69 · 14-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -857,10 +857,10 @@ function init(){
   sel.value=unit;
   var ac=document.getElementById('angchk'); if(ac){ ac.checked=angOn(); document.getElementById('angtab').hidden=!angOn(); }
   document.getElementById('dateInp').value=viewIso; renderRoBar();
-  parkLoad();
+  parkLoad(); styleLogLoad();
   load(); renderRail(); showSec('daily');
   setSync(syncOn()?'⇅ syncing…':'sync off', syncOn()?'busy':'');
-  if(syncOn()){ syncPull(); startSyncPoll(); parkPull(); }
+  if(syncOn()){ syncPull(); startSyncPoll(); parkPull(); styleLogPull(); }
   detectShift();   // fetch on-call schedule → pre-select today's unit (async, non-blocking; dropdown always overrides)
 }
 function switchUnit(){ captureCurrentBed(); unit=document.getElementById('unitSel').value; try{localStorage.setItem('ub_last_unit',unit);}catch(e){}
@@ -994,6 +994,35 @@ function parkPull(cb){ if(!syncOn()){cb&&cb();return;}
   var q=SB_URL+'?select=data&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.__PARK__&date=eq.all';
   fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
     if(rows&&rows[0]&&rows[0].data){ if(Array.isArray(rows[0].data.park))parkData=rows[0].data.park; if(Array.isArray(rows[0].data.hist))parkHist=rows[0].data.hist; parkSaveLocal(); if(section==='park')renderView(); }
+    cb&&cb();
+  }).catch(function(){ cb&&cb(); }); }
+
+// ---- Style-learning LOG (Phase 2) — accumulates finalized-note deltas + feedback, cross-device (own Supabase row unit=__STYLE__) ----
+// Read by Claude Code (session-start / ~14:00 routine) to mine RECURRING patterns → proposes profile changes for the physician to confirm. Never auto-applies.
+var styleLog=[];
+function styleLogLoad(){ try{ styleLog=JSON.parse(localStorage.getItem('ub_stylelog')||'[]'); }catch(e){ styleLog=[]; } }
+function styleLogSaveLocal(){ try{ localStorage.setItem('ub_stylelog', JSON.stringify(styleLog)); }catch(e){} }
+function styleLogAdd(k, silent){
+  if(k==null||!beds[k])return false;
+  var r=styleDelta(k); if(!r||r.none||!r.any)return false;   // nothing worth logging
+  var ed=beds[k].d||{};
+  var entry={ id:'s'+Date.now().toString(36)+Math.floor(Math.random()*1296).toString(36),
+    at:new Date().toISOString(), date:curDate(), unit:(ed.unit||unit||'').toUpperCase(), bed:String(k),
+    note_type:ed.note_type||'daily', s:r.s };
+  // de-dupe: one entry per bed+date (latest wins) so re-finalising the same note doesn't double-count
+  styleLog=styleLog.filter(function(e){ return !(e.bed===entry.bed && e.date===entry.date && e.unit===entry.unit); });
+  styleLog.push(entry); styleLog=styleLog.slice(-200);   // keep last 200
+  styleLogSaveLocal(); styleLogPush();
+  if(!silent) flashMsg('📥 Logged to style-learning ('+styleLog.length+' notes). Patterns are reviewed with your confirmation — nothing changes on its own.');
+  return true;
+}
+function styleLogPush(){ if(!syncOn())return;
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),
+    body:JSON.stringify({space:syncSpace,unit:'__STYLE__',date:'all',data:{log:styleLog},updated_at:new Date().toISOString()})}).catch(function(){}); }
+function styleLogPull(cb){ if(!syncOn()){cb&&cb();return;}
+  var q=SB_URL+'?select=data&space=eq.'+encodeURIComponent(syncSpace)+'&unit=eq.__STYLE__&date=eq.all';
+  fetch(q,{headers:sbH()}).then(function(r){return r.ok?r.json():null;}).then(function(rows){
+    if(rows&&rows[0]&&rows[0].data&&Array.isArray(rows[0].data.log)){ styleLog=rows[0].data.log; styleLogSaveLocal(); }
     cb&&cb();
   }).catch(function(){ cb&&cb(); }); }
 function syncSetup(){
@@ -1259,7 +1288,9 @@ function openBed(n){ captureCurrentBed(); current=n; section='daily'; setTab('da
 function showSec(s){ if(section==='daily')captureCurrentBed(); section=s; setTab(s); renderView(); }
 
 // ---- bed lifecycle ----
-function toggleRounded(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; w.state=(w.state==='rounded')?'preround':'rounded'; save(); renderRail(); renderBedBar(); }
+function toggleRounded(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; var was=w.state; w.state=(w.state==='rounded')?'preround':'rounded';
+  if(w.state==='rounded'&&was!=='rounded'){ try{ styleLogAdd(current,true); }catch(e){} }   // finalising a note → auto-capture its style delta+feedback for learning (silent)
+  save(); renderRail(); renderBedBar(); }
 function toggleTask(i){ if(!guardEdit())return; var w=beds[current]; if(!w)return; w.taskDone=w.taskDone||[]; var k=w.taskDone.indexOf(i);
   if(k>=0)w.taskDone.splice(k,1); else w.taskDone.push(i); save(); renderRail(); renderBedBar(); }
 function addTask(){ if(!guardEdit())return; var w=beds[current]; if(!w)return; var t=prompt('New task / watch-item for Bed '+current+':'); if(!t)return;
@@ -1812,7 +1843,8 @@ function styleDelta(k){
   if(!struct)           L.push('• No structural changes — kept the generated note as-is.');
   if(fbLiked)           L.push('• 👍 Liked: '+fbLiked);
   if(fbDis)             L.push('• 👎 Didn’t like: '+fbDis);
-  return {text:L.join('\n'), any:!!(struct||fbLiked||fbDis)};
+  var s={blanked:blanked,trimmed:trimmed,reworded:reworded,removedProb:removedProb,removedTask:removedTask,safety:safety,liked:fbLiked,disliked:fbDis};
+  return {text:L.join('\n'), any:!!(struct||fbLiked||fbDis), s:s};
 }
 function openStyleNote(){
   if(current==null||!beds[current]){ alert('Open a bed first.'); return; }
@@ -1829,6 +1861,7 @@ function styleModal(text){
     +'<textarea id="styletxt" readonly style="display:block;width:100%;height:220px;border:0;padding:14px 16px;font:13px/1.5 ui-monospace,Menlo,monospace;resize:vertical;color:#22324d;background:#fbfcfe"></textarea>'
     +'<div style="padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #e6ebf2">'
     +'<button onclick="document.getElementById(\'stylemodal\').remove()" style="font:inherit;font-weight:700;background:#eef2f8;color:#33425c;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Close</button>'
+    +'<button onclick="if(styleLogAdd(current)){this.textContent=\'✓ Logged\';this.disabled=true}" title="Add to the style-learning log — reviewed with your confirmation, never auto-applied" style="font:inherit;font-weight:700;background:#1f8a4c;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">📥 Log for learning</button>'
     +'<button onclick="copyText(document.getElementById(\'styletxt\').value);this.textContent=\'✓ Copied\'" style="font:inherit;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">📋 Copy</button>'
     +'</div></div>';
   mo.addEventListener('click',function(e){ if(e.target===mo)mo.remove(); });
