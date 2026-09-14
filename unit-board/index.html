@@ -106,7 +106,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.65 · 13-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.66 · 14-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -714,7 +714,7 @@ var unit='PICU+PICUSU', beds={}, current=null, section='daily';
 var fontScale=parseFloat(localStorage.getItem('ub_fontscale')||'1.2');
 // handover print options (default = the LOCKED layout; adjustable only if the user nudges)
 var hvOpts=(function(){try{var o=JSON.parse(localStorage.getItem('ub_hvopts'));if(o&&typeof o==='object')return o;}catch(e){}return{};})();
-if(hvOpts.font==null)hvOpts.font=1; if(hvOpts.rowmm==null)hvOpts.rowmm=67; if(hvOpts.margin==null)hvOpts.margin=7;
+if(hvOpts.font==null)hvOpts.font=1; if(hvOpts.rowmm==null)hvOpts.rowmm=67; if(hvOpts.margin==null)hvOpts.margin=12;   /* default top/bottom ≥12mm — §23 print invariant (14-Sep-2026); user control still adjusts it */
 function hvSave(){ try{localStorage.setItem('ub_hvopts',JSON.stringify(hvOpts));}catch(e){} }
 
 // ---- small helpers ----
@@ -1315,7 +1315,7 @@ function hvAdj(k,delta){
   hvOpts[k]=Math.max(lo,Math.min(hi, Math.round(((hvOpts[k]||0)+delta)*100)/100));
   hvSave(); renderView();
 }
-function hvReset(){ hvOpts={font:1,rowmm:67,margin:7}; hvSave(); renderView(); }
+function hvReset(){ hvOpts={font:1,rowmm:67,margin:12}; hvSave(); renderView(); }
 function printHandover(){ var f=document.getElementById('hvframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use the sheet’s own Print button, or Ctrl/Cmd+P inside it.');} } }
 // ---- edit → Save as v2 → revert (shared by Handover + Concise; hovOverride syncs across devices) ----
@@ -1433,7 +1433,7 @@ function buildConciseHTML(D){
     +'.aro-tag{background:#fbd9d6;color:#a51f1a;border:1px solid #e39490}'
     +'.transfer-tag{background:#dcefe1;color:#1b7a37;border:1px solid #93c9a5}'
     +'.new-tag{background:#d8e8fb;color:#1a4b8f;border:1px solid #93b8e3}'
-    +'@page{size:A4 portrait;margin:8mm}'
+    +'@page{size:A4 portrait;margin:12mm 8mm}'   /* top+bottom ≥12mm — §23 print invariant; clears printer dead-zone + browser header/footer (feedback 14-Sep-2026) */
     +'@media print{body{background:#fff;padding:0}.ccard{border-color:#999}.cnotes{border-left-color:#999}.cv:empty:before{content:""}}'
     +'</style>';
   var body=cards.length?('<div class="clist">'+cards.join('')+'</div>')
@@ -1540,7 +1540,7 @@ function buildAngelaHTML(D){
     +'.abox{display:inline-flex;gap:2px;margin-right:7px;vertical-align:-1px;text-indent:0}'
     +'.abox i{width:9px;height:9px;border-radius:2px;border:1.3px solid #9aa7b8;display:inline-block;background:#fff}'
     +'.abox i.o{background:#2a4ea0;border-color:#2a4ea0}.abox i.r{background:#2c9a48;border-color:#2c9a48}'
-    +'@page{size:A4 portrait;margin:8mm}@media print{body{background:#fff;padding:0}.acard{border-color:#999}}'
+    +'@page{size:A4 portrait;margin:12mm 8mm}@media print{body{background:#fff;padding:0}.acard{border-color:#999}}'   /* top+bottom ≥12mm — §23 print invariant (14-Sep-2026) */
     +'</style>';
   var legend='<div class="leg"><b style="color:#12213f">Status:</b>'
     +'<span>'+angBox('pending')+'ordered · awaiting</span>'
