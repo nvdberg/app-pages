@@ -106,7 +106,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.66 · 14-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.67 · 14-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1109,6 +1109,7 @@ function renderBedBar(){
     '<button class="rnd" onclick="toggleRounded()">'+(w.state==='rounded'?'↺ Pre-round':'✓ Mark rounded')+'</button>'+
     '<button class="sec" onclick="showSec(\'rounding\')" title="Open the rounding sheet for this bed">🩺 Rounding sheet</button>'+
     '<button class="sec" onclick="addTask()">＋ Task</button>'+
+    '<button class="sec" onclick="openStyleNote()" title="How you edited this note vs. what was generated — a copyable signal for icu style: learning">📝 Style note</button>'+
     '<span class="chips">'+chips+'</span>'+
     '<span class="spacer"></span>'+
     provChip(d)+
@@ -1160,8 +1161,9 @@ function routeEntry(d){ // slot one parsed object into its bed; returns {ok,bed}
     beds[key]={ d:hv?null:d, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[], unassigned:true };
     return {ok:true, bed:key, hv:hv};
   }
-  if(beds[n]){ if(hv){beds[n].hvcard=d;} else {beds[n].d=d; beds[n].hvcard=null; delete beds[n]._scm;} }  // re-paste replaces data → drop the stale generated note
-  else { beds[n]={ d:hv?null:d, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[] }; }
+  var gen=hv?null:JSON.parse(JSON.stringify(d));   // pristine "as generated" snapshot → style-delta baseline (§ style-learning)
+  if(beds[n]){ if(hv){beds[n].hvcard=d;} else {beds[n].d=d; beds[n]._gen=gen; beds[n].hvcard=null; delete beds[n]._scm;} }  // re-paste replaces data → drop the stale generated note + reset the style baseline
+  else { beds[n]={ d:hv?null:d, _gen:gen, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[] }; }
   return {ok:true, bed:n, hv:hv};
 }
 function loadJSONText(t, srcMsg){
@@ -1757,6 +1759,78 @@ function rrSendToUnit(k){ var w=beds[k]; if(!w||!w.d)return; var d=w.d, u=normUn
   flashMsg('⇧ Sent to '+u+' board — your RR copy is unchanged.'); }
 function copyText(s){ try{ navigator.clipboard.writeText(s); }catch(e){ var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e2){} document.body.removeChild(ta); } }
 function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent=t; } }
+
+// ---- Style-learning delta (Phase 1): what you KEPT vs. what was generated — a signal for `icu style:`, never an auto-change ----
+var STYLE_SAFETY=/allerg|anaphylax|\bARO\b|isolation|precaution|goc|goals of care|code status|resus|\bdnr\b|\bdni\b|smost|airway|unsecured|bleed|\bHIT\b/i;
+function _sFlat(x){ if(x==null)return ''; if(typeof x==='object')return String(x.name||x.text||x.allergen||''); return String(x); }
+function _sLines(v){ if(v==null)return []; if(Array.isArray(v))return v.map(_sFlat).filter(function(s){return s&&s.trim();}); return String(v).split(/\r?\n/).map(function(s){return s.trim();}).filter(Boolean); }
+function _sCap(s,n){ s=String(s).replace(/\s+/g,' ').trim(); n=n||60; return s.length<=n?s:s.slice(0,n-1)+'…'; }
+function _sEmpty(v){ if(v==null)return true; if(Array.isArray(v))return _sLines(v).length===0; return String(v).trim()===''; }
+function styleDelta(k){
+  var w=beds[k]; if(!w) return null;
+  var gen=w._gen; if(!gen) return {none:true};
+  var ed=w.d||{};
+  try{ if(current===k){ var ifr=document.querySelector('#view iframe'); if(ifr&&ifr.contentWindow&&typeof ifr.contentWindow.captureToD==='function'){ var e=ifr.contentWindow.captureToD(); if(e&&e.bed!=null) ed=e; } } }catch(_){}
+  var blanked=[], trimmed=[], reworded=[], removedProb=[], removedTask=0, safety=[];
+  ['subtitle','one_liner','admit_setting','admit_dx','handover_line','overnight'].forEach(function(f){
+    var g=gen[f], x=ed[f];
+    if(!_sEmpty(g)&&_sEmpty(x)){ (STYLE_SAFETY.test(f)?safety:blanked).push(f); }
+    else if(!_sEmpty(g)&&!_sEmpty(x)&&typeof g!=='object'&&!Array.isArray(g)&&String(g).trim()!==String(x).trim()){
+      reworded.push(f+': "'+_sCap(g)+'" → "'+_sCap(x)+'"');
+    }
+  });
+  [['pmhx','PMHx'],['pmhx_relevant','relevant PMHx'],['diagnoses','diagnoses'],['hospital_course','hospital course']].forEach(function(p){
+    var g=_sLines(gen[p[0]]).length, x=_sLines(ed[p[0]]).length;
+    if(g>0&&x===0) blanked.push(p[1]);
+    else if(x<g) trimmed.push(p[1]+' '+g+'→'+x);
+  });
+  var edProbs=(ed.problems||[]);
+  (gen.problems||[]).forEach(function(gp){
+    if(!gp||!gp.name)return;
+    var xp=edProbs.filter(function(q){return q&&q.name&&q.name.toLowerCase()===gp.name.toLowerCase();})[0];
+    var isSafety=(gp.type==='goc')||STYLE_SAFETY.test(gp.name);
+    if(!xp){ (isSafety?safety:removedProb).push('"'+_sCap(gp.name,40)+'"'+(isSafety?' (safety)':'')); return; }
+    ['tx','plan'].forEach(function(fld){
+      var g=_sLines(gp[fld]).length, x=_sLines(xp[fld]).length;
+      if(x<g) trimmed.push('"'+_sCap(gp.name,26)+'" '+fld+' '+g+'→'+x);
+    });
+  });
+  removedTask=Math.max(0, _sLines((gen.tasks||[]).map(function(t){return t&&t.text;})).length - _sLines((ed.tasks||[]).map(function(t){return t&&t.text;})).length);
+  var any=blanked.length||trimmed.length||reworded.length||removedProb.length||removedTask||safety.length;
+  var L=[];
+  L.push('STYLE DELTA · Bed '+String(k)+(ed.unit?' · '+String(ed.unit).toUpperCase():'')+' · '+today());
+  L.push('(How I edited this note vs. what was generated — a signal for `icu style:`. ONE note only; nothing changes unless a pattern RECURS and I confirm it.)');
+  L.push('');
+  if(blanked.length)    L.push('• Blanked / dropped: '+blanked.join(', '));
+  if(trimmed.length)    L.push('• Trimmed (verbosity): '+trimmed.join('; '));
+  if(reworded.length)   L.push('• Reworded: '+reworded.join(' | '));
+  if(removedProb.length)L.push('• Removed problems: '+removedProb.join(', '));
+  if(removedTask)       L.push('• Removed tasks: '+removedTask);
+  if(safety.length)     L.push('• ⚠ Safety-critical (never learn to drop — flagged only): '+safety.join(', '));
+  if(!any)              L.push('• No structural changes — kept the generated note as-is.');
+  return {text:L.join('\n'), any:!!any};
+}
+function openStyleNote(){
+  if(current==null||!beds[current]){ alert('Open a bed first.'); return; }
+  var r=styleDelta(current);
+  if(r&&r.none){ alert('No generation baseline for this bed — it wasn’t loaded from a fresh paste this session, so there’s nothing to diff. The delta works on beds you paste in and then edit.'); return; }
+  styleModal(r.text);
+}
+function styleModal(text){
+  var old=document.getElementById('stylemodal'); if(old)old.remove();
+  var mo=document.createElement('div'); mo.id='stylemodal';
+  mo.style.cssText='position:fixed;inset:0;z-index:200;background:rgba(15,25,45,.45);display:flex;align-items:center;justify-content:center;padding:20px';
+  mo.innerHTML='<div style="background:#fff;color:#1a2233;border-radius:10px;max-width:640px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden">'
+    +'<div style="padding:12px 16px;background:#1a3c8f;color:#fff;font-weight:700;display:flex;align-items:center;gap:8px;flex-wrap:wrap">📝 Style note <span style="font-weight:400;font-size:12px;opacity:.85">— paste into a web-Claude chat after <b>icu style:</b></span></div>'
+    +'<textarea id="styletxt" readonly style="display:block;width:100%;height:220px;border:0;padding:14px 16px;font:13px/1.5 ui-monospace,Menlo,monospace;resize:vertical;color:#22324d;background:#fbfcfe"></textarea>'
+    +'<div style="padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #e6ebf2">'
+    +'<button onclick="document.getElementById(\'stylemodal\').remove()" style="font:inherit;font-weight:700;background:#eef2f8;color:#33425c;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">Close</button>'
+    +'<button onclick="copyText(document.getElementById(\'styletxt\').value);this.textContent=\'✓ Copied\'" style="font:inherit;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:8px 14px;cursor:pointer">📋 Copy</button>'
+    +'</div></div>';
+  mo.addEventListener('click',function(e){ if(e.target===mo)mo.remove(); });
+  document.body.appendChild(mo);
+  document.getElementById('styletxt').value=text;
+}
 
 var parkView='active';
 function setParkView(v){ parkView=v; renderView(); }
