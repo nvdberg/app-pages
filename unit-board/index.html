@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.78 · 15-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.79 · 15-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -138,6 +138,7 @@
     <div id="pastebar">
       <textarea id="pjson" placeholder='Paste a bed&#39;s JSON here — it loads automatically on paste (or press ⌘/Ctrl+Enter). Routes by the "bed" field.'></textarea>
       <button onclick="loadPaste()">⤵ Load bed</button>
+      <button onclick="copyAllBedsJSON()" title="Copy every occupied bed on this unit as one JSON array (bulk baseline / backup)">📋 Copy all beds</button>
       <span id="msg"></span>
     </div>
     <div id="bedbar"></div>
@@ -1155,6 +1156,7 @@ function renderBedBar(){
     '<button class="rnd" onclick="toggleRounded()">'+(w.state==='rounded'?'↺ Pre-round':'✓ Mark rounded')+'</button>'+
     '<button class="sec" onclick="showSec(\'rounding\')" title="Open the rounding sheet for this bed">🩺 Rounding sheet</button>'+
     '<button class="sec" onclick="addTask()">＋ Task</button>'+
+    '<button class="sec" onclick="copyBedJSON()" title="Copy this bed\'s §10 JSON (baseline for an icu daily update: consolidation)">📋 JSON</button>'+
     '<button class="sec" onclick="openStyleNote()" title="How you edited this note vs. what was generated — a copyable signal for icu style: learning">📝 Style note</button>'+
     '<button class="sec" onclick="openStyleFb()" title="Private feedback on this note (liked / would change) — never enters SCM; feeds the style-learning loop">💬 Feedback'+((beds[current]&&beds[current]._styleFb&&(((beds[current]._styleFb.liked||'')+(beds[current]._styleFb.disliked||'')).trim()))?' •':'')+'</button>'+
     '<span class="chips">'+chips+'</span>'+
@@ -1855,6 +1857,21 @@ function rrSendToUnit(k){ var w=beds[k]; if(!w||!w.d)return; var d=w.d, u=normUn
   flashMsg('⇧ Sent to '+u+' board — your RR copy is unchanged.'); }
 function copyText(s){ try{ navigator.clipboard.writeText(s); }catch(e){ var ta=document.createElement('textarea'); ta.value=s; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');}catch(e2){} document.body.removeChild(ta); } }
 function flashMsg(t){ var m=document.getElementById('msg'); if(m){ m.textContent=t; } }
+// ---- Copy bed JSON (baseline for an "icu daily update Bed N:" consolidation) — one bed, or the whole unit ----
+function copyBedJSON(){
+  if(current==null||!beds[current]||!bd(current)){ alert('Open a bed first (pick one on the left).'); return; }
+  var d=bd(current);
+  try{ var ifr=document.querySelector('#view iframe'); if(ifr&&ifr.contentWindow&&typeof ifr.contentWindow.captureToD==='function'){ var ed=ifr.contentWindow.captureToD(); if(ed&&ed.bed!=null)d=ed; } }catch(e){}  // prefer live on-screen edits
+  copyText(JSON.stringify(d,null,2));
+  flashMsg('📋 Bed '+current+' JSON copied — paste it into an "icu daily update Bed '+current+':" chat as the baseline.');
+}
+function copyAllBedsJSON(){
+  try{ captureCurrentBed(); }catch(e){}   // fold the open bed's live edits in first
+  var arr=[]; Object.keys(beds).sort(function(a,b){return (''+a).localeCompare(''+b,undefined,{numeric:true});}).forEach(function(k){ var w=beds[k]; if(w&&w.d){ arr.push(w.d); } });
+  if(!arr.length){ alert('No beds with data on '+unit+' to copy.'); return; }
+  copyText(JSON.stringify(arr,null,2));
+  flashMsg('📋 Copied '+arr.length+' bed'+(arr.length>1?'s':'')+' from '+unit+' as one JSON array (bulk baseline / backup).');
+}
 
 // ---- Style-learning delta (Phase 1): what you KEPT vs. what was generated — a signal for `icu style:`, never an auto-change ----
 var STYLE_SAFETY=/allerg|anaphylax|\bARO\b|isolation|precaution|goc|goals of care|code status|resus|\bdnr\b|\bdni\b|smost|airway|unsecured|bleed|\bHIT\b/i;
