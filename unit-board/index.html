@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.74 · 15-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.75 · 15-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1654,7 +1654,10 @@ function renderReference(view){
   var SYS=['Cardiac','Respiratory','Neuro','GI / Hepatic','Renal / Metabolic / Endo','ID','Other'];
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'
     +'<div id="hvbar"><b>📖 Reference — ICU guideline library</b> <span style="color:#667">'+REFDATA.length+' conditions · offline · AI-compiled, verify before use</span>'
-    +'<span class="hvsp"></span><input id="refq" placeholder="Search condition or text…" oninput="refFilter()" style="font:inherit;padding:5px 10px;border:1px solid #cdd9ee;border-radius:6px;min-width:240px"></div>'
+    +'<span class="hvsp"></span><input id="refq" placeholder="Search condition or text…  ( / )" oninput="refFilter()" style="font:inherit;padding:5px 10px;border:1px solid #cdd9ee;border-radius:6px;min-width:220px">'
+    +'<button class="rndbtn" onclick="refFullscreen()" title="Full-screen the reference (Esc exits)">🖥 Fullscreen</button>'
+    +'<button class="rndbtn" onclick="refNewWindow()" title="Open the current card in its own window">⧉ New window</button>'
+    +'<button class="rndprint" onclick="refPrint()">🖨 Print card</button></div>'
     +'<div style="flex:1;display:flex;min-height:0">'
     +'<div id="reflist" style="flex:0 0 300px;overflow:auto;border-right:1px solid #c3d4ee;background:#f3f7fd;padding:6px 0"></div>'
     +'<div id="refbody" style="flex:1;overflow:auto;padding:16px 22px;background:#fff"></div>'
@@ -1671,7 +1674,9 @@ function renderReference(view){
      +'#refbody table.reftbl{border-collapse:collapse;margin:8px 0 12px;font-size:12.5px;width:100%}'
      +'#refbody table.reftbl th{background:#eef2f8;text-align:left;padding:5px 8px;border:1px solid #cbd5e6;font-weight:700;color:#12285e}'
      +'#refbody table.reftbl td{padding:5px 8px;border:1px solid #dbe3ef;vertical-align:top}'
-     +'#refbody table.reftbl tr:nth-child(even) td{background:#f8fafd}';
+     +'#refbody table.reftbl tr:nth-child(even) td{background:#f8fafd}'
+     +'#reflist .rsys .cdot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}'
+     +'@media print{@page{size:A4 portrait;margin:14mm 12mm} body *{visibility:hidden!important} #refbody,#refbody *{visibility:visible!important} #refbody{position:absolute!important;left:0;top:0;width:100%;overflow:visible!important;padding:0!important;background:#fff!important} #refbody blockquote,#refbody table.reftbl th,#refbody table.reftbl td{-webkit-print-color-adjust:exact;print-color-adjust:exact}}';
     document.head.appendChild(st); }
   window._refBySys=function(){ var g={}; REFDATA.forEach(function(r){ (g[r.system]=g[r.system]||[]).push(r); }); return g; };
   window._refSYS=SYS;
@@ -1687,12 +1692,50 @@ function refRenderList(q){
     var items=(g[sys]||[]).filter(function(r){ return !q || r.title.toLowerCase().indexOf(q)>=0 || r.body.toLowerCase().indexOf(q)>=0; })
       .sort(function(a,b){return a.title<b.title?-1:1;});
     if(!items.length)return;
-    html+='<div class="rsys">'+esc(sys)+'</div>';
-    items.forEach(function(r){ html+='<div class="ritem'+(refSel===r.file?' on':'')+'" onclick="refOpen(\''+r.file+'\')">'+esc(r.title)+'</div>'; });
+    var col=REF_SYSCOL[sys]||'#8a97a8';
+    html+='<div class="rsys"><span class="cdot" style="background:'+col+'"></span>'+esc(sys)+'</div>';
+    items.forEach(function(r){ html+='<div class="ritem'+(refSel===r.file?' on':'')+'" style="border-left:3px solid '+col+'" onclick="refOpen(\''+r.file+'\')">'+esc(r.title)+'</div>'; });
   });
   list.innerHTML=html||'<div class="rstub" style="padding:20px;font-size:12px">No match.</div>';
 }
+var REF_SYSCOL={'Cardiac':'#d9342b','Respiratory':'#1a73e8','Neuro':'#7e3ff2','GI / Hepatic':'#b8860b','Renal / Metabolic / Endo':'#1f8a4c','ID':'#e0842b','Other':'#66788f'};
 function refFilter(){ var q=document.getElementById('refq').value; refRenderList(q); }
+// ---- Reference-tab toolbar (print / fullscreen / new-window) — shared "printable board surface" pattern, §23 ----
+function refPrint(){
+  if(!refSel){ alert('Open a condition card first (pick one on the left), then Print.'); return; }
+  if(!confirm('Print tips (Chrome dialog):\n• Margins: Default   • Headers & footers: OFF  ← usual top-clip cause\n• Scale: 100%   • Background graphics: ON\n\nOK to open the print dialog (prints the open card).')) return;
+  try{ window.print(); }catch(e){ alert('Could not open the print dialog — '+e.message); }
+}
+function refFullscreen(){ var el=document.getElementById('refbody'); if(!el)return;
+  try{ if(el.requestFullscreen)el.requestFullscreen(); else if(el.webkitRequestFullscreen)el.webkitRequestFullscreen(); else alert('Fullscreen not supported here.'); }
+  catch(e){ alert('Could not go fullscreen — '+e.message); } }
+function refNewWindow(){
+  if(!refSel){ alert('Open a condition card first, then New window.'); return; }
+  var r=REFDATA.filter(function(x){return x.file===refSel;})[0]; if(!r)return;
+  var w=window.open('','_blank','width=860,height=960');
+  if(!w){ alert('Popup blocked — allow pop-ups for this page to detach the card.'); return; }
+  var css='body{font-family:Segoe UI,system-ui,sans-serif;background:#fff;color:#12213f;margin:0;padding:20px;max-width:820px;line-height:1.45}'
+    +'h1{font-size:20px;color:#12285e}h2{font-size:14px;color:#1a3c8f;border-bottom:1px solid #e7eef9;padding-bottom:3px;margin:16px 0 5px}'
+    +'blockquote{background:#fff8ec;border-left:4px solid #e0b020;margin:0 0 12px;padding:8px 12px;font-size:12px;color:#7a5a00;border-radius:0 6px 6px 0}'
+    +'ul{padding-left:22px}li{margin:3px 0}code{background:#eef2f8;padding:1px 4px;border-radius:3px}a{color:#1a73e8}'
+    +'table{border-collapse:collapse;width:100%;font-size:12.5px;margin:8px 0 12px}th{background:#eef2f8;text-align:left;padding:5px 8px;border:1px solid #cbd5e6;color:#12285e}td{padding:5px 8px;border:1px solid #dbe3ef;vertical-align:top}'
+    +'.bar{position:sticky;top:0;background:#fff;padding:0 0 10px;display:flex;gap:8px;border-bottom:1px solid #e7eef9;margin-bottom:12px}'
+    +'.bar button{font:inherit;font-weight:700;border:0;border-radius:6px;padding:8px 14px;cursor:pointer;color:#fff}.cp{background:#28a745}.pr{background:#1a73e8}.cl{background:#6c757d}'
+    +'@page{size:A4 portrait;margin:14mm 12mm}@media print{.bar{display:none}body{padding:0}}';
+  var doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+esc(r.title)+' — reference</title><style>'+css+'</style></head><body>'
+    +'<div class="bar"><button class="pr" onclick="window.print()">Print</button><button class="cl" onclick="window.close()">Close</button></div>'
+    +'<div id="c">'+refMd(r.body)+'</div></body></html>';
+  w.document.open(); w.document.write(doc); w.document.close();
+}
+// press "/" to jump to the reference search (when on the Reference tab and not already typing)
+if(!window._refSlashBound){ window._refSlashBound=true;
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='/'||section!=='reference')return;
+    var a=document.activeElement, tag=a&&a.tagName;
+    if(tag==='INPUT'||tag==='TEXTAREA'||(a&&a.isContentEditable))return;
+    var q=document.getElementById('refq'); if(q){ e.preventDefault(); q.focus(); }
+  });
+}
 function refOpen(file){
   refSel=file; var r=REFDATA.filter(function(x){return x.file===file;})[0]; if(!r)return;
   document.getElementById('refbody').innerHTML=refMd(r.body);
