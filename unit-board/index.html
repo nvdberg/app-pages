@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.76 · 15-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.77 · 15-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1449,9 +1449,10 @@ function conciseCards(D){
     var _d=(beds[k]&&beds[k].d)?beds[k].d:null;
     var _surg=''; if(_d&&_d.procedure){ var pd=(_d.pod!=null&&_d.pod!=='')?' · POD '+(refDayShift(_d.pod)):''; _surg=cFit(hvClean?hvClean(_d.procedure):(''+_d.procedure),120)+pd; }
     var rows=crow('admit','Dx',dx)+(_surg?crow('surg','Surg',_surg):'')+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
+    var _blank=!dx&&!rx&&!pend&&!ovn&&!_surg;   // content-blank bed (not flagged empty) → drop the "? · GoC unknown" clutter
+    var _chip=(_blank && (b.goc==null||b.goc==='goc-uk')) ? '' : '<span class="cchip" style="background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span>';
     var main='<div class="cmain">'
-      +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(refShiftPtDay(b.pt||''))+'</span>'
-      +'<span class="cchip" style="background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span></div>'
+      +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(refShiftPtDay(b.pt||''))+'</span>'+_chip+'</div>'
       +rows+(flags?'<div class="cflags">'+flags+'</div>':'')+'</div>';
     return '<div class="ccard'+(b.alert?' alert':'')+'" data-bed="'+k+'" style="border-left-color:'+g.bar+'">'+main+notes+'</div>';
   });
@@ -1484,8 +1485,8 @@ function buildConciseHTML(D){
     +'.aro-tag{background:#fbd9d6;color:#a51f1a;border:1px solid #e39490}'
     +'.transfer-tag{background:#dcefe1;color:#1b7a37;border:1px solid #93c9a5}'
     +'.new-tag{background:#d8e8fb;color:#1a4b8f;border:1px solid #93b8e3}'
-    +'@page{size:A4 portrait;margin:12mm 8mm}'   /* top+bottom ≥12mm — §23 print invariant; clears printer dead-zone + browser header/footer (feedback 14-Sep-2026) */
-    +'@media print{body{background:#fff;padding:0}.ccard{border-color:#999}.cnotes{border-left-color:#999}.cv:empty:before{content:""}}'
+    +'@page{size:A4 portrait;margin:15mm 8mm 12mm}'   /* top 15mm — the first box / page-break box outline was clipping at 12mm (feedback 15-Sep-2026); §23 print invariant */
+    +'@media print{body{background:#fff;padding:0}.clist{padding-top:2mm}.ccard{border-color:#999;-webkit-print-color-adjust:exact;print-color-adjust:exact}.cnotes{border-left-color:#999}.cv:empty:before{content:""}}'
     +'</style>';
   var body=cards.length?('<div class="clist">'+cards.join('')+'</div>')
     :'<div style="padding:30px;text-align:center;color:#667">No beds.</div>';
