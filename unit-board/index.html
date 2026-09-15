@@ -38,6 +38,7 @@
   .rndbar{display:flex;align-items:center;gap:10px;padding:8px 14px;background:#fff;border-bottom:1px solid #cfd8e6}
   .rndbar .rndttl{font-weight:800;color:#1a3c8f;font-size:14px}
   .rndbar .rndprint{font:inherit;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:7px 14px;cursor:pointer}
+  .rndbar .rndbtn{font:inherit;font-weight:700;background:#eef2f8;color:#33425c;border:1px solid #cfd8e6;border-radius:6px;padding:7px 12px;cursor:pointer}
   .rndframe{flex:1;width:100%;border:0;background:#fff}
   #wrap{flex:1;display:flex;min-height:0}
   #rail{flex:0 0 274px;background:#dbe6f6;padding:8px 7px;overflow-y:auto;display:flex;flex-direction:column;gap:8px}
@@ -106,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.71 · 14-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.72 · 15-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -294,6 +295,16 @@ function rsLabsBlock(d){
   return lines?('<div class="labs"><h3>Labs</h3>'+lines+'</div>'):'';
 }
 
+// Investigations — chronological imaging / micro / cardiac one-liners (DD Mon HH:MM — Modality: Punchline), oldest first.
+// Brought onto the sheet 15-Sep-2026 (was §23-stripped) so a presenter can cite "when was the CT/echo/micro + finding" at the bedside.
+function rsInvestigationsBlock(d){
+  var inv=rsLines(d.investigations);
+  if(!inv.length)return '';
+  return '<div class="invs"><h3>Investigations</h3><ul>'
+    +inv.map(function(l){return '<li>'+rsFlag(l)+'</li>';}).join('')
+    +'</ul></div>';
+}
+
 function rsProblemsBlock(d){
   // GoC is shown in the flags row above — NOT repeated as a problem row (de-dup, 26-Aug-2026)
   var probs=(d.problems||[]).filter(function(p){return p&&p.name&&p.type!=='goc';});
@@ -391,6 +402,7 @@ function renderRoundingSheet(d){
    +'.snap-box .rows{font-size:9pt;line-height:1.45}.snap-box .rows .r{display:flex;justify-content:space-between;gap:5px}.snap-box .rows .r .l{color:#555;font-weight:600}.snap-box .rows .r .v{font-weight:700;text-align:right}'
    +'.labs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.labs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}'
    +'.labs .line{font-size:8.4pt;line-height:1.4;margin-bottom:1px}.labs .line .pn{font-weight:700;color:#333;display:inline-block;min-width:78px}'
+   +'.invs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.invs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}.invs ul{margin:0;padding-left:15px;font-size:8.5pt;line-height:1.42}.invs li{padding:1px 0}'
    +'.hi{color:#b02020;font-weight:700}.lo{color:#0d47a1;font-weight:700}'
    +'table.prob{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9.4pt}'
    +'table.prob thead{display:table-header-group;background:#000;color:#fff}table.prob thead th{padding:4px 7px;text-align:left;font-weight:700;text-transform:uppercase;font-size:8pt;letter-spacing:.5px}'
@@ -408,7 +420,7 @@ function renderRoundingSheet(d){
     +(dx?'<div class="dx">Dx: '+rsEsc(dx)+'</div>':'')+'</div>'
     +'<div class="hdr-r"><div class="date">'+rsDate()+'</div><div class="day">ICU Day '+day+'</div>'+(_hp.showHospBadge?'<div class="day" style="background:#1a3c8f;margin-top:2px">Hosp Day '+_tot.hospDay+'</div>':'')+'</div></div>'
     +rsIntroBlock(d)+rsPmhxBlock(d)
-    +rsFlagsBlock(d)+rsOvernightBlock(d)+rsTodayBlock(d)+rsSnapBlock(d)+rsLabsBlock(d)+rsProblemsBlock(d)
+    +rsFlagsBlock(d)+rsOvernightBlock(d)+rsTodayBlock(d)+rsSnapBlock(d)+rsLabsBlock(d)+rsInvestigationsBlock(d)+rsProblemsBlock(d)
     +'<div class="foot"><div class="legend">† = inferred / not in signed SCM &nbsp;·&nbsp; (H) high &nbsp;·&nbsp; (L) low &nbsp;·&nbsp; (HH)/(LL) markedly abnormal &nbsp;·&nbsp; ⚠ safety flag</div>'
     +'<div>Bed '+rsEsc(d.bed)+' · '+rsEsc(unit)+' · '+rsDate()+' · board-generated §23</div></div>'
     +'<div class="print-instructions"><strong>Before printing:</strong><ul>'
@@ -2000,11 +2012,19 @@ function renderRounding(view){
   view.innerHTML='<div class="rndwrap">'
     +'<div class="rndbar"><span class="rndttl">Rounding sheet · Bed '+esc(''+current)+'</span>'
     +'<span style="flex:1"></span>'
+    +'<button class="rndbtn" onclick="fullscreenRounding()" title="Clean full-screen presenter view (Esc to exit)">🖥 Fullscreen</button>'
+    +'<button class="rndbtn" onclick="roundSheetForCurrent()" title="Pop the sheet into its own window — keep the board live on another monitor / device">⧉ New window</button>'
     +'<button class="rndprint" onclick="printRounding()">🖨 Print / Save PDF</button></div>'
     +'<iframe id="rndframe" class="rndframe"></iframe></div>';
   var f=document.getElementById('rndframe'); if(f){ f.srcdoc=html; }
 }
-function printRounding(){ try{ var f=document.getElementById('rndframe'); if(f&&f.contentWindow){ f.contentWindow.focus(); f.contentWindow.print(); } }catch(e){ alert('Could not open the print dialog — '+e.message); } }
+function fullscreenRounding(){ var f=document.getElementById('rndframe'); if(!f)return;
+  try{ if(f.requestFullscreen)f.requestFullscreen(); else if(f.webkitRequestFullscreen)f.webkitRequestFullscreen(); else alert('Fullscreen not supported in this browser.'); }
+  catch(e){ alert('Could not go fullscreen — '+e.message); } }
+function printRounding(){
+  // §23 print-tips reminder before the dialog (the #1 fix for top-clip / headers-on)
+  if(!confirm('Print tips (Chrome dialog):\n• Margins: Default   • Headers & footers: OFF  ← usual top-clip cause\n• Scale: 100% (not Fit)   • Background graphics: ON\n\nClick OK to open the print dialog.')) return;
+  try{ var f=document.getElementById('rndframe'); if(f&&f.contentWindow){ f.contentWindow.focus(); f.contentWindow.print(); } }catch(e){ alert('Could not open the print dialog — '+e.message); } }
 function roundSheetForCurrent(){   // legacy popup path (kept as a fallback; the Rounding tab is the primary surface)
   if(current==null||!beds[current]){ alert('Load a bed first (paste its JSON).'); return; }
   var d=bd(current);
