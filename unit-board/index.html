@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.73 · 15-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.74 · 15-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -254,7 +254,7 @@ function rsTodayBlock(d){
 
 function rsSnapBlock(d){
   var v=d.vitals||{}, fl=d.fluids||{};
-  // Vitals + support + fluids as ONE horizontal strip (was a 4-box grid)
+  // 1) VITALS strip — scannable NUMBERS only (was: numbers + full exam narrative crammed into one run, 15-Sep-2026)
   var vit=[];
   if(v.bp)vit.push('BP '+rsFlag(v.bp)+(v.map?' (MAP '+rsEsc(v.map)+')':''));
   if(v.hr)vit.push('HR '+rsFlag(v.hr));
@@ -262,14 +262,18 @@ function rsSnapBlock(d){
   if(v.rr)vit.push('RR '+rsFlag(v.rr));
   if(v.tmax)vit.push('Tmax '+rsFlag(v.tmax));
   if(v.gcs)vit.push('GCS '+rsEsc(v.gcs));
-  if(v.resp)vit.push('Resp '+rsEsc(v.resp));
-  if(v.cvs)vit.push('CVS '+rsEsc(v.cvs));
-  if(v.abd)vit.push('Abd '+rsEsc(v.abd));
-  if(fl.fb)vit.push('FB '+rsEsc(fl.fb));
-  if(fl.uo)vit.push('UO '+rsEsc(fl.uo));
-  if(fl.note)vit.push(rsEsc(fl.note));
-  if(v.other)vit.push(rsEsc(v.other));
   var out=vit.length?'<div class="strip"><span class="sl">Vitals</span> '+vit.join(' &nbsp;·&nbsp; ')+'</div>':'';
+  // 2) EXAM block — one labelled line per system (only those present), so the narrative doesn't bury the vitals
+  var rows=[];
+  function exrow(lbl,val){ if(val!=null&&String(val).trim()) rows.push('<div class="line"><span class="pn">'+lbl+'</span> '+rsFlag(String(val))+'</div>'); }
+  exrow('Resp', v.resp); exrow('CVS', v.cvs); exrow('Abd', v.abd); exrow('Neuro', v.neuro);
+  var flu=[];
+  if(fl.fb)flu.push('FB '+rsEsc(fl.fb));
+  if(fl.uo)flu.push('UO '+rsEsc(fl.uo));
+  if(fl.note)flu.push(rsEsc(fl.note));
+  if(flu.length) rows.push('<div class="line"><span class="pn">Fluids</span> '+flu.join(' &nbsp;·&nbsp; ')+'</div>');
+  exrow('Other', v.other);
+  if(rows.length) out+='<div class="exam">'+rows.join('')+'</div>';
   // ABG/VBG as ONE line from the labs (was its own box)
   var abg=(d.labs||[]).filter(function(s){return /abg|vbg|gas/i.test(s.section||'');})[0];
   if(abg&&abg.items&&abg.items.length){
@@ -403,6 +407,7 @@ function renderRoundingSheet(d){
    +'.labs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.labs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}'
    +'.labs .line{font-size:8.4pt;line-height:1.4;margin-bottom:1px}.labs .line .pn{font-weight:700;color:#333;display:inline-block;min-width:78px}'
    +'.invs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.invs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}.invs ul{margin:0;padding-left:15px;font-size:8.5pt;line-height:1.42}.invs li{padding:1px 0}'
+   +'.exam{border:1px solid #666;border-top:0;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fff}.exam .line{font-size:8.7pt;line-height:1.4;margin-bottom:1.5px}.exam .pn{font-weight:800;text-transform:uppercase;font-size:7pt;letter-spacing:.3px;color:#555;display:inline-block;min-width:50px;vertical-align:top}'
    +'.hi{color:#b02020;font-weight:700}.lo{color:#0d47a1;font-weight:700}'
    +'table.prob{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9.4pt}'
    +'table.prob thead{display:table-header-group;background:#000;color:#fff}table.prob thead th{padding:4px 7px;text-align:left;font-weight:700;text-transform:uppercase;font-size:8pt;letter-spacing:.5px}'
