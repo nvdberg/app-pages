@@ -377,14 +377,36 @@ if(show)safe.classList.add('on');else safe.classList.remove('on');
 function gSCM(){
 if(!D){alert('Load a patient first (paste JSON or click Sample).');return;}
 var b='';
+function wrapPlain(val,ind,bullet){
+  ind=ind||'  '; bullet=bullet||''; var W=78, pad=ind+' '.repeat(bullet.length);
+  var words=String(val).replace(/\s+/g,' ').trim().split(' ');
+  var out=[], cur=ind+bullet;
+  for(var i=0;i<words.length;i++){
+    if(cur.length+words[i].length+1>W && cur.trim()!==bullet.trim()){ out.push(cur.replace(/\s+$/,'')); cur=pad; }
+    cur+=words[i]+' ';
+  }
+  out.push(cur.replace(/\s+$/,''));
+  return out.join('\n')+'\n';
+}
+function wrapLab(lab,val,ind){
+  ind=ind||'  '; var W=78, pad=ind+'    ';
+  var words=String(val).replace(/\s+/g,' ').trim().split(' ');
+  var out=[], cur=ind+lab+': ';
+  for(var i=0;i<words.length;i++){
+    if(cur.length+words[i].length+1>W && cur.trim()!==(lab+':')){ out.push(cur.replace(/\s+$/,'')); cur=pad; }
+    cur+=words[i]+' ';
+  }
+  out.push(cur.replace(/\s+$/,''));
+  return out.join('\n')+'\n';
+}
 var agesex=gv('p_agesex')||'—';
 var setting=gv('p_setting');
 b='WOUND CARE NOTE — '+agesex+' | '+td()+(setting?' | '+setting:'')+'\n';
 b+='------------------------------------------------------------\n';
 var hx=readChkList('hx_list');
-if(hx.length)b+='\nRelevant history: '+hx.join('; ')+'\n';
+if(hx.length){b+='\nRELEVANT HISTORY:\n';hx.forEach(function(l){b+='  - '+l+'\n';});}
 var meds=readChkList('meds_list');
-if(meds.length)b+='Relevant meds: '+meds.join('; ')+'\n';
+if(meds.length){b+='\nRELEVANT MEDS:\n';meds.forEach(function(l){b+='  - '+l+'\n';});}
 /* wounds */
 var cards=document.querySelectorAll('#wound-host .wd');
 var multi=cards.length>1;
@@ -402,54 +424,54 @@ b+='\n'+(multi?'WOUND '+(n+1)+':':'WOUND:')+' '+(site||'(site not specified)')+'
 var line1=[];
 if(etio)line1.push('Etiology: '+etio);
 if(dur)line1.push('Duration: '+dur);
-if(line1.length)b+='  '+line1.join('  |  ')+'\n';
+line1.forEach(function(t){b+='  '+t+'\n';});
 if(L||W||Dp){var sz=[L?L:'?',W?W:'?',Dp?Dp:'?'].join(' x ');b+='  Size: '+sz+' cm (L x W x D)\n';}
 var tiss=[];
 if(gran)tiss.push(gran+'% granulation');if(slo)tiss.push(slo+'% slough');if(esc2)tiss.push(esc2+'% eschar');if(epi)tiss.push(epi+'% epithelial');
-if(tiss.length)b+='  Wound bed: '+tiss.join(', ')+'\n';
+if(tiss.length){b+='  Wound bed:\n';tiss.forEach(function(t){b+='    - '+t+'\n';});}
 if(examt||extype)b+='  Exudate: '+[examt,extype].filter(function(x){return x;}).join(', ')+'\n';
-if(edges)b+='  Edges: '+edges+'\n';
-if(peri)b+='  Peri-wound: '+peri+'\n';
+if(edges)b+=wrapLab('Edges',edges);
+if(peri)b+=wrapLab('Peri-wound',peri);
 var misc=[];
 if(odor)misc.push('Odor: '+odor);if(pain)misc.push('Pain: '+pain);
-if(misc.length)b+='  '+misc.join('  |  ')+'\n';
-b+='  Infection signs: '+(inf.length?inf.join(', '):'none noted')+'\n';
-if(dress)b+='  Current dressing: '+dress+'\n';
+misc.forEach(function(t){b+='  '+t+'\n';});
+if(inf.length){b+='  Infection signs:\n';inf.forEach(function(t){b+='    - '+t+'\n';});}else{b+='  Infection signs: none noted\n';}
+if(dress)b+=wrapLab('Current dressing',dress);
 if(photos)b+='  Photos: '+photos+'\n';
 });
 /* limb */
 var pulses=gv('l_pulses'),edema=gv('l_edema'),abi=gv('l_abi'),skin=gv('l_skin'),limbImp=gv('l_impression');
 if(pulses||edema||abi||skin||limbImp){
 b+='\nLOWER LIMB:\n';
-if(pulses)b+='  Pulses: '+pulses+'\n';
-if(edema)b+='  Edema: '+edema+'\n';
-if(abi)b+='  ABI: '+abi+'\n';
-if(skin)b+='  Skin: '+skin+'\n';
-if(limbImp)b+='  Impression: '+limbImp+'\n';
+if(pulses)b+=wrapLab('Pulses',pulses);
+if(edema)b+=wrapLab('Edema',edema);
+if(abi)b+=wrapLab('ABI',abi);
+if(skin)b+=wrapLab('Skin',skin);
+if(limbImp)b+=wrapLab('Impression',limbImp);
 }
 /* impression */
 var imp=gv('impression');
-if(imp)b+='\nIMPRESSION:\n  '+imp.replace(/\n/g,'\n  ')+'\n';
+if(imp){b+='\nIMPRESSION:\n';imp.split(/\n+/).forEach(function(l){if(l.trim())b+=wrapPlain(l,'  ');});}
 /* plan */
 b+='\nPLAN:\n';
-[['pl_cleansing','Cleansing'],['pl_debridement','Debridement'],['pl_dressing','Dressing']].forEach(function(f){var v=gv(f[0]);if(v)b+='  '+f[1]+': '+v+'\n';});
+[['pl_cleansing','Cleansing'],['pl_debridement','Debridement'],['pl_dressing','Dressing']].forEach(function(f){var v=gv(f[0]);if(v)b+=wrapLab(f[1],v);});
 /* compression — ABI-gated safety */
 var comp=gv('pl_compression');
 if(comp&&!compHeld(comp)&&!abiAdequate(abi)){
 b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
 }else if(comp){
-b+='  Compression: '+comp+'\n';
+b+=wrapLab('Compression',comp);
 }else{
 b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
 }
-[['pl_offloading','Offloading'],['pl_nutrition_adjuncts','Nutrition / adjuncts'],['pl_referral','Referral'],['pl_followup','Follow-up']].forEach(function(f){var v=gv(f[0]);if(v)b+='  '+f[1]+': '+v+'\n';});
-var cite=gv('pl_guideline_cite');if(cite)b+='  Guideline: '+cite+'\n';
+[['pl_offloading','Offloading'],['pl_nutrition_adjuncts','Nutrition / adjuncts'],['pl_referral','Referral'],['pl_followup','Follow-up']].forEach(function(f){var v=gv(f[0]);if(v)b+=wrapLab(f[1],v);});
+var cite=gv('pl_guideline_cite');if(cite)b+=wrapLab('Guideline',cite);
 /* escalate */
 var esc3=readChkList('escalate_list');
-if(esc3.length){b+='\n** ESCALATE — RED FLAGS **\n';esc3.forEach(function(l){b+='  ! '+l+'\n';});}
+if(esc3.length){b+='\n** ESCALATE — RED FLAGS **\n';esc3.forEach(function(l){b+=wrapPlain(l,'  ','! ');});}
 /* goals */
 var goals=gv('goals');
-if(goals)b+='\nGOALS: '+goals+'\n';
+if(goals){b+='\nGOALS:\n'+wrapPlain(goals,'  ');}
 /* footer */
 b+='\n------------------------------------------------------------\n';
 b+='AI-compiled documentation aid — verify against the Wounds Canada BPR 2025\nand local SHA protocol (incl. SHA 0157 ABPI thresholds) before use.\nRN assessment and clinical judgment govern. Signed: ______________________  Date: '+td()+'\n';
