@@ -320,8 +320,8 @@ function hClearAll(){
    sent in the x-sync-space header. The publishable key below is public by
    design — the passphrase is the secret. Sync is OFF until one is entered,
    so nothing leaves this PC by default. ---- */
-var SB_URL="https://qbtnxkzpddexczhcvxre.supabase.co/rest/v1/wound_state";
-var SB_KEY="sb_publishable_uqqWXuhGAPqd85yXC4rLsA_q7RX1zAQ";
+var SB_URL="https://gmsgezzqdpwxjgmnyahr.supabase.co/rest/v1/wound_state";
+var SB_KEY="sb_publishable_UxE9mSCiAG78hOQKopHzmg_ENIWS0FJ";
 function syncSpace(){try{return localStorage.getItem('wc_sync_space')||'';}catch(e){return '';}}
 function syncOn(){return !!syncSpace();}
 function sbH(extra){var h={apikey:SB_KEY,'x-sync-space':syncSpace(),'content-type':'application/json'};
