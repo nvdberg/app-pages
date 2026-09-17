@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<!-- Wound-Care-SCM-Generator · v1.0 (17-Sep-2026) · adapted from ICU-SCM-Generator framework for portable, HIPA-first single-nurse wound-care documentation. Offline · no storage · no network. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wound Care SCM Generator</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#eef6f1;color:#111;font-family:'Segoe UI',sans-serif;font-size:13px;padding:14px;max-width:960px;margin:0 auto}
+/* toolbar */
+.bar{background:#fff;border:1px solid #b6d8c4;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.bar .bt{flex:1;min-width:180px}
+.bar .bt h1{color:#0f5132;font-size:18px;font-weight:800;line-height:1.1}
+.bar .bt .sub{color:#667;font-size:11px;margin-top:2px}
+.pill{display:inline-block;background:#d1e7dd;color:#0f5132;border:1px solid #a3cfbb;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;margin-left:4px}
+.bar .btns{display:flex;gap:6px;flex-wrap:wrap}
+.bar .btns button{font:inherit;font-size:12px;font-weight:700;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}
+.b-samp{background:#6e40c9;color:#fff}.b-copy{background:#28a745;color:#fff}.b-print{background:#1a73e8;color:#fff}.b-fs{background:#eef2f8;color:#33425c;border:1px solid #cfd8e6!important}.b-nw{background:#eef2f8;color:#33425c;border:1px solid #cfd8e6!important}
+.jp{background:#fff;border:2px dashed #b6d8c4;border-radius:8px;padding:18px;margin-bottom:14px}
+.jp h2{color:#0f5132;font-size:15px;font-weight:700;margin-bottom:4px}
+.jp p{color:#666;font-size:12px;margin-bottom:10px}
+.jp textarea{background:#f8f9fa;border:1px solid #b6d8c4;border-radius:5px;color:#111;padding:10px;width:100%;font-size:11px;font-family:'Consolas','Courier New',monospace;line-height:1.4;height:180px;resize:vertical}
+.jp textarea:focus{outline:none;border-color:#28a745;background:#fff}
+.eb{background:#f8d7da;border:1px solid #f5c2c7;border-radius:6px;padding:10px 14px;color:#842029;font-size:12px;margin-bottom:10px;display:none}
+/* header */
+.hd{background:#cfe9dc;border-left:4px solid #28a745;border-radius:6px;padding:12px 16px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+.hd h1{color:#0f5132;font-size:16px;font-weight:700}
+.mt{color:#444;font-size:11px;margin-top:2px}
+.tg{background:#6e40c9;color:#fff;border-radius:3px;padding:2px 8px;font-size:11px;font-weight:700;margin-left:6px;vertical-align:middle}
+.dy{text-align:center;background:#fff3e0;border:1px solid #f0883e;border-radius:6px;padding:4px 14px;flex-shrink:0}
+.dn{font-size:20px;font-weight:800;color:#f0883e;line-height:1}
+.dl{color:#999;font-size:9px;text-transform:uppercase;letter-spacing:1px}
+/* cards */
+.cd{background:#e3f1ea;border:1px solid #b6d8c4;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.ct{color:#0f5132;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:700}
+.meds-card{background:#d1e7dd;border:1px solid #a3cfbb;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.meds-card .ct{color:#0f5132}
+.hx-card{background:#daeaf8;border:1px solid #b6cff0;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.hx-card .ct{color:#1a3c8f}
+.limb-card{background:#e2d9f3;border:1px solid #c5b3e6;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.limb-card .ct{color:#432874}
+.imp-card{background:#fff3cd;border:1px solid #ffc107;border-left:5px solid #f0883e;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.imp-card .ct{color:#664d03}
+.esc-card{background:#f8d7da;border:1px solid #f5c2c7;border-left:5px solid #dc3545;border-radius:6px;padding:12px 16px;margin-bottom:10px}
+.esc-card .ct{color:#842029}
+/* wound card */
+.wd{background:#fff;border:1px solid #b6d8c4;border-left:5px solid #28a745;border-radius:6px;padding:14px 16px;margin-bottom:10px}
+.wd .wt{color:#0f5132;font-size:14px;font-weight:700;margin-bottom:8px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px}
+.g4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px}
+@media(max-width:600px){.g2,.g3,.g4{grid-template-columns:1fr 1fr}}
+label.fl{display:block;color:#555;font-size:10px;text-transform:uppercase;margin-bottom:2px}
+input[type=text]{background:#fff;border:1px solid #b6d8c4;border-radius:4px;color:#111;padding:5px 8px;width:100%;font-size:12px;font-family:inherit}
+input[type=text]:focus{outline:none;border-color:#28a745}
+.fta{background:#fff;border-radius:4px;color:#111;padding:7px 10px;width:100%;font-size:12px;font-family:inherit;line-height:1.5;resize:none;overflow:hidden;display:block;min-height:52px;border:2px solid #28a745}
+.fta:focus{outline:none}
+.fg{margin-bottom:8px}
+.lbx{color:#0f5132;font-size:10px;font-weight:700;text-transform:uppercase;margin-bottom:2px}
+/* compression safety banner */
+.compsafe{background:#fff3cd;border:2px solid #f0883e;border-radius:6px;padding:10px 14px;margin:8px 0;color:#842029;font-size:12px;font-weight:700;display:none}
+.compsafe.on{display:block}
+.compsafe .note{font-weight:400;color:#664d03;margin-top:4px;font-size:11px}
+.sh{color:#0f5132;font-size:10px;text-transform:uppercase;letter-spacing:1.5px;margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid #b6d8c4;font-weight:700}
+.scp{background:#d1e7dd;border:2px solid #28a745;border-radius:6px;padding:14px;margin-top:14px;display:none}
+.scp h3{color:#0f5132;font-size:12px;font-weight:700;text-transform:uppercase;margin-bottom:8px}
+.scm{background:#fff;border:1px solid #b6d8c4;border-radius:4px;padding:14px;font-family:'Consolas','Courier New',monospace;font-size:12px;color:#111;white-space:pre-wrap;line-height:1.65;max-height:60vh;overflow-y:auto}
+.dv{height:1px;background:#b6d8c4;margin:14px 0}
+/* checklist rows */
+.chk-list{display:flex;flex-direction:column;gap:3px;margin-bottom:4px}
+.chk-row{display:flex;gap:6px;align-items:flex-start;padding-top:2px}
+.chk-row input[type=checkbox]{flex-shrink:0;accent-color:#28a745;cursor:pointer;width:16px;height:16px;margin-top:5px}
+.chk-row textarea{flex:1;background:#fff;border:1px solid #b6d8c4;border-radius:3px;padding:5px 8px;font-size:12px;font-family:inherit;color:#111;resize:none;overflow:hidden;line-height:1.4;min-height:28px}
+.chk-row textarea:focus{outline:none;border-color:#28a745}
+.chk-row.off textarea{text-decoration:line-through;opacity:0.5;background:#f5f5f5}
+.chk-row .rm{background:#dc3545;color:#fff;border:none;border-radius:3px;width:20px;height:20px;font-size:12px;font-weight:700;cursor:pointer;flex-shrink:0;line-height:1}
+.chk-add{background:transparent;border:1px dashed #b6d8c4;border-radius:4px;color:#0f5132;padding:4px 8px;font-size:11px;font-weight:600;cursor:pointer;margin-top:3px;width:100%;font-family:inherit}
+.chk-add:hover{background:#e3f1ea}
+.rm-wound{background:#dc3545;color:#fff;border:none;border-radius:3px;width:24px;height:24px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;float:right}
+/* print-tips modal */
+.modal-bg{position:fixed;inset:0;background:rgba(15,25,45,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:500}
+.modal{background:#fff;border-radius:10px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.modal .mh{background:#1a73e8;color:#fff;padding:12px 16px;font-weight:700}
+.modal .mb{padding:14px 18px;font-size:13px;line-height:1.6;color:#22324d}
+.modal .mb b{color:#0f5132}
+.modal .mf{padding:10px 16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #e6ebf2}
+.modal .mf button{font:inherit;font-weight:700;border:0;border-radius:6px;padding:8px 14px;cursor:pointer}
+.modal .mf .go{background:#1a73e8;color:#fff}.modal .mf .no{background:#eef2f8;color:#33425c}
+/* PRINT: show only the SCM output pane */
+@page{size:A4 portrait;margin:16mm 14mm 14mm 14mm}
+@media print{
+  .noprint{display:none!important}
+  body{background:#fff;padding:0;max-width:none}
+  #sp{display:block!important;border:0;background:#fff;padding:0;margin:0}
+  #sp h3,#sp .scp-btns{display:none!important}
+  #scm{border:0;max-height:none;overflow:visible;font-size:11pt;white-space:pre-wrap}
+}
+</style>
+</head>
+<body>
+<div class="bar noprint">
+  <div class="bt">
+    <h1>🩹 Wound Care SCM Generator</h1>
+    <div class="sub">local · offline · no persistence</div>
+  </div>
+  <div>
+    <span class="pill">No storage ✓</span>
+    <span class="pill">No network ✓</span>
+  </div>
+  <div class="btns">
+    <button class="b-samp" onclick="loadSample()">Sample</button>
+    <button class="b-copy" onclick="copyOutput()">Copy</button>
+    <button class="b-print" onclick="showPrintTips()">Print</button>
+    <button class="b-fs" onclick="toggleFullscreen()">Fullscreen</button>
+    <button class="b-nw" onclick="openInNewWindow()">New window</button>
+    <button class="b-nw" onclick="if(!D||confirm('Clear this patient and start fresh? Nothing is saved.'))clearForm()" style="background:#8a1f2b;color:#fff" title="Wipe the form + note to start a new patient (nothing is stored)">🧹 Clear</button>
+  </div>
+</div>
+<div id="jp" class="jp noprint">
+  <h2>⚡ Render a wound-note JSON into an SCM / Procura note</h2>
+  <p>Paste the JSON your Wound Care project produced (a <code>note_type</code> of <code>"wound"</code>), then click Load Form — or click <b>Sample</b> above for a worked example. Nothing is stored or sent anywhere.</p>
+  <textarea id="ji" placeholder='{"note_type":"wound","patient":{"age_sex":"72F"},"wounds":[ ... ]}'></textarea>
+  <div style="display:flex;gap:10px;margin-top:10px">
+    <button onclick="loadJSON()" style="flex:2;background:#28a745;color:#fff;border:none;border-radius:6px;padding:12px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">⚡ Load Form</button>
+    <button onclick="clearForm()" style="flex:1;background:#6c757d;color:#fff;border:none;border-radius:6px;padding:12px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit">↺ Reset</button>
+  </div>
+</div>
+<div id="eb" class="eb noprint"></div>
+<div id="fp" class="noprint"></div>
+<div id="sp" class="scp">
+  <h3>✓ Wound Note Ready</h3>
+  <div id="scm" class="scm"></div>
+  <div class="scp-btns" style="display:flex;gap:10px;margin-top:12px">
+    <button onclick="gSCM()" style="flex:1;background:#1a73e8;color:#fff;border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⚡ Regenerate</button>
+    <button onclick="copyOutput()" style="flex:2;background:#28a745;color:#fff;border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" id="cbtn">📋 Copy to Clipboard</button>
+  </div>
+</div>
+<div id="ptips" class="modal-bg">
+  <div class="modal">
+    <div class="mh">🖨 Before you print</div>
+    <div class="mb">In the browser print dialog, set:<br>• Margins: <b>Default</b><br>• Headers &amp; footers: <b>OFF</b> &nbsp;<span style="color:#842029">(the usual cause of top-clipping)</span><br>• Scale: <b>100%</b> (not Fit-to-page)<br>• Background graphics: <b>ON</b></div>
+    <div class="mf"><button class="no" onclick="hidePrintTips()">Cancel</button><button class="go" onclick="doPrint()">Print now</button></div>
+  </div>
+</div>
+<script>
+/* ============================================================================
+   PORTABLE, HIPA-FIRST, SINGLE-FILE WOUND-CARE NOTE GENERATOR.
+   NO PERSISTENCE of any kind: no localStorage / sessionStorage / IndexedDB,
+   no autosave/restore, no network calls, no external fonts/CDNs. Everything
+   runs locally and evaporates when the tab closes. §0: de-identified only —
+   Age · Sex · relevant history; never a name, HSN/MRN, DOB, or address.
+   ============================================================================ */
+var REV = 'v1.0 · 17-Sep-2026';
+var D=null, SCM='';
+
+/* ---- helpers ---- */
+function td(){var d=new Date();var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear();}
+function lclDate(x){if(x instanceof Date)return new Date(x);var m=String(x==null?'':x).match(/(\d{4})-(\d{2})-(\d{2})/);return m?new Date(+m[1],+m[2]-1,+m[3]):new Date(x);}
+function fmtDate(x){if(!x)return td();var a=lclDate(x);if(isNaN(a))return String(x);var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return String(a.getDate()).padStart(2,'0')+'-'+m[a.getMonth()]+'-'+a.getFullYear();}
+function el(t,c,h){var e=document.createElement(t);if(c)e.className=c;if(h!==undefined)e.innerHTML=h;return e;}
+function ii(id,v){var i=document.createElement('input');i.type='text';i.id=id;i.value=(v==null?'':v);return i;}
+function ag(t){t.style.height='0';t.style.height=(t.scrollHeight+4)+'px';}
+function ta(id,v){var t=document.createElement('textarea');t.className='fta';t.id=id;t.value=(v==null?'':v);t.addEventListener('input',function(){ag(this);});return t;}
+function fd(l,e){var d=el('div');d.appendChild(el('label','fl',l));d.appendChild(e);return d;}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function gv(id){var e=document.getElementById(id);return e?(e.value||'').trim():'';}
+function showErr(msg){var eb=document.getElementById('eb');eb.style.display='block';eb.style.whiteSpace='pre-wrap';eb.style.maxHeight='400px';eb.style.overflowY='auto';eb.style.fontFamily='monospace';eb.textContent='⚠ '+msg;}
+/* ABI adequacy: a plan compression is only safe when arterial disease is excluded */
+function abiAdequate(abi){if(!abi)return false;var m=String(abi).match(/-?\d+(\.\d+)?/);if(!m)return false;var n=parseFloat(m[0]);return n>=0.8&&n<=1.3;}
+function compHeld(str){return /held|unknown|not excluded|arterial/i.test(String(str||''));}
+
+/* checklist (tick / untick / edit / add) */
+function mkChkRow(text,checked){
+var row=el('div','chk-row');if(!checked)row.classList.add('off');
+var cb=document.createElement('input');cb.type='checkbox';cb.checked=checked!==false;
+var inp=document.createElement('textarea');inp.rows=1;inp.value=text||'';
+function autoGrow(){inp.style.height='0';inp.style.height=Math.max(28,inp.scrollHeight)+'px';}
+inp.addEventListener('input',autoGrow);setTimeout(autoGrow,10);
+cb.addEventListener('change',function(){if(this.checked)row.classList.remove('off');else row.classList.add('off');});
+var rm=document.createElement('button');rm.className='rm';rm.textContent='×';rm.title='Remove this line';
+rm.onclick=function(){row.remove();};
+row.appendChild(cb);row.appendChild(inp);row.appendChild(rm);
+return row;
+}
+function mkChkList(containerId,source,addLabel){
+var lines;
+if(Array.isArray(source))lines=source.reduce(function(acc,s){return acc.concat(String(s||'').split(/ · | ; /));},[]);
+else if(typeof source==='string'&&source.length)lines=source.split('\n');
+else lines=[];
+var wrap=el('div','chk-list');wrap.id=containerId;
+lines.forEach(function(line){var t=String(line||'').trim();if(t)wrap.appendChild(mkChkRow(t,true));});
+var addBtn=document.createElement('button');addBtn.className='chk-add';addBtn.textContent='+ '+(addLabel||'Add line');
+addBtn.onclick=function(){var newRow=mkChkRow('',true);wrap.insertBefore(newRow,addBtn);setTimeout(function(){var inp=newRow.querySelector('textarea');if(inp)inp.focus();},0);};
+wrap.appendChild(addBtn);
+return wrap;
+}
+function readChkList(containerId){
+var wrap=document.getElementById(containerId);if(!wrap)return [];
+var out=[];
+wrap.querySelectorAll('.chk-row').forEach(function(row){
+var cb=row.querySelector('input[type=checkbox]');var inp=row.querySelector('textarea');
+if(cb&&cb.checked&&inp&&inp.value.trim())out.push(inp.value.trim());
+});
+return out;
+}
+
+/* ---- load / sample / reset ---- */
+function loadJSON(){
+var raw=document.getElementById('ji').value.trim();
+if(!raw){showErr('Paste a wound-note JSON block first (or click Sample).');return;}
+try{
+raw=raw.replace(/```json\n?|```/g,'').trim();
+var parsed=JSON.parse(raw);
+seedAndRender(parsed);
+}catch(e){
+var hint='';
+if(/Unterminated|Unexpected end|Expected/.test(e.message))hint='The JSON looks truncated — likely cut off when copied from chat. Regenerate it and paste again.\n\n';
+var preview=raw.length>500?raw.substring(0,300)+'\n...['+raw.length+' chars total]...\n'+raw.substring(raw.length-200):raw;
+showErr(hint+'JSON parse error: '+e.message+'\n\nPasted content preview:\n'+preview);
+}
+}
+function seedAndRender(parsed){
+D=parsed;
+D.note_type='wound';
+D.patient=D.patient||{};
+if(!D.wounds||!D.wounds.length)D.wounds=[{}];
+document.getElementById('jp').style.display='none';
+document.getElementById('eb').style.display='none';
+rF(D);
+}
+function loadSample(){document.getElementById('ji').value=JSON.stringify(SAMPLE_JSON,null,2);loadJSON();window.scrollTo(0,0);}
+function clearForm(){
+D=null;SCM='';
+document.getElementById('fp').innerHTML='';
+document.getElementById('ji').value='';
+document.getElementById('jp').style.display='block';
+document.getElementById('eb').style.display='none';
+document.getElementById('sp').style.display='none';
+}
+
+/* ---- render form ---- */
+function rF(d){
+D=d;
+var fp=document.getElementById('fp');fp.innerHTML='';
+var pt=d.patient||{},vis=d.visit||{};
+/* header */
+var hdr=el('div','hd');
+var setting=(vis.setting?vis.setting:'')+(vis.visit_number?(vis.setting?' · ':'')+'Visit '+vis.visit_number:'');
+hdr.innerHTML='<div><h1>Wound Care Note<span class="tg">'+(pt.age_sex||'—')+'</span></h1><div class="mt">'+fmtDate(d.date)+(setting?' &middot; '+esc(setting):'')+'</div><div class="mt" style="color:#999;font-size:9px;margin-top:3px">rev '+REV+'</div></div><div class="dy"><div class="dn">🩹</div><div class="dl">Wound Care</div></div>';
+fp.appendChild(hdr);
+/* patient identifier + history */
+var pc=el('div','hx-card');pc.appendChild(el('div','ct','Patient (de-identified) — Age · Sex · relevant history'));
+var pg=el('div','g2');
+pg.appendChild(fd('Age · Sex',ii('p_agesex',pt.age_sex||'')));
+var settingD=el('div');settingD.appendChild(el('label','fl','Visit setting / number'));settingD.appendChild(ii('p_setting',setting));pg.appendChild(settingD);
+pc.appendChild(pg);
+var hxD=el('div','fg');hxD.appendChild(el('div','lbx','Relevant History (diabetes, PVD/venous, mobility, nutrition, anticoagulation…)'));hxD.appendChild(mkChkList('hx_list',pt.hx,'Add history'));pc.appendChild(hxD);
+fp.appendChild(pc);
+/* meds relevant */
+var mc=el('div','meds-card');mc.appendChild(el('div','ct','Medications relevant to healing (anticoagulants, steroids, immunosuppressants…)'));
+mc.appendChild(mkChkList('meds_list',d.meds_relevant,'Add medication'));fp.appendChild(mc);
+/* wounds */
+fp.appendChild(el('div','sh','Wound(s) — TIME assessment'));
+var woundHost=el('div');woundHost.id='wound-host';
+(d.wounds||[]).forEach(function(w,i){woundHost.appendChild(renderWound(w,i));});
+fp.appendChild(woundHost);
+var addWBtn=el('button','chk-add','+ Add another wound');addWBtn.style.marginBottom='10px';
+addWBtn.onclick=function(){var n=document.querySelectorAll('#wound-host .wd').length;document.getElementById('wound-host').appendChild(renderWound({},n));};
+fp.appendChild(addWBtn);
+/* limb */
+var lc=el('div','limb-card');lc.appendChild(el('div','ct','Lower-limb assessment (for leg wounds — drives compression safety)'));
+var lm=d.limb||{};
+var lg=el('div','g2');
+lg.appendChild(fd('Pulses (DP / PT)',ii('l_pulses',lm.pulses||'')));
+lg.appendChild(fd('Edema',ii('l_edema',lm.edema||'')));
+lc.appendChild(lg);
+var lg2=el('div','g2');
+lg2.appendChild(fd('ABI',ii('l_abi',lm.abi||'')));
+lg2.appendChild(fd('Impression (venous / arterial / mixed)',ii('l_impression',lm.impression||'')));
+lc.appendChild(lg2);
+lc.appendChild(fd('Skin',ii('l_skin',lm.skin||'')));
+fp.appendChild(lc);
+/* overall impression */
+var ic=el('div','imp-card');ic.appendChild(el('div','ct','Impression — classification / stage + healing trajectory'));
+ic.appendChild(ta('impression',d.impression||''));fp.appendChild(ic);
+/* plan */
+var pcard=el('div','cd');pcard.appendChild(el('div','ct','Plan (decision-support — verify against guidelines + SHA protocol)'));
+var pl=d.plan||{};
+[['cleansing','Cleansing'],['debridement','Debridement'],['dressing','Dressing (matched to exudate + wound bed)']].forEach(function(f){
+var dd=el('div','fg');dd.appendChild(el('label','fl',f[1]));dd.appendChild(ii('pl_'+f[0],pl[f[0]]||''));pcard.appendChild(dd);
+});
+/* compression — with prominent ABI safety */
+var compD=el('div','fg');compD.appendChild(el('label','fl','Compression'));
+var compInp=ii('pl_compression',pl.compression||'');compD.appendChild(compInp);pcard.appendChild(compD);
+var safe=el('div','compsafe');safe.id='compsafe';
+safe.innerHTML='⚠ COMPRESSION SAFETY — ABI not confirmed adequate.<div class="note">Do NOT apply compression until arterial disease is excluded (ABI ≥ 0.8). If ABI is unknown, the plan below will read "HELD — ABI unknown / arterial disease not excluded."</div>';
+pcard.appendChild(safe);
+compInp.addEventListener('input',refreshCompSafe);
+[['offloading','Offloading'],['nutrition_adjuncts','Nutrition / adjuncts'],['referral','Referral triggers'],['followup','Follow-up'],['guideline_cite','Guideline citation']].forEach(function(f){
+var dd=el('div','fg');dd.appendChild(el('label','fl',f[1]));dd.appendChild(ii('pl_'+f[0],pl[f[0]]||''));pcard.appendChild(dd);
+});
+fp.appendChild(pcard);
+/* escalate */
+var ec=el('div','esc-card');ec.appendChild(el('div','ct','⚠ Escalate / red flags → MD / urgent review'));
+ec.appendChild(mkChkList('escalate_list',d.escalate,'Add red flag'));fp.appendChild(ec);
+/* goals */
+var gc=el('div','cd');gc.appendChild(el('div','ct','Goals of care'));gc.appendChild(ta('goals',d.goals||''));fp.appendChild(gc);
+/* generate */
+fp.appendChild(el('div','dv'));
+var gb=document.createElement('button');gb.textContent='⚡ Generate Wound Note';
+gb.setAttribute('style','display:block;width:100%;background:#28a745;color:#fff;border:none;border-radius:6px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:8px');
+gb.onclick=gSCM;fp.appendChild(gb);
+/* set ABI on the limb ABI field to also refresh the banner */
+var abiInp=document.getElementById('l_abi');if(abiInp)abiInp.addEventListener('input',refreshCompSafe);
+refreshCompSafe();
+setTimeout(function(){fp.querySelectorAll('.fta').forEach(function(t){ag(t);});},80);
+}
+/* one wound card */
+function renderWound(w,i){
+var card=el('div','wd');card.id='wound_'+i;card.setAttribute('data-widx',i);
+var head=el('div');head.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:8px';
+var rm=el('button','rm-wound','×');rm.title='Remove this wound';rm.style.float='none';
+rm.onclick=function(){if(document.querySelectorAll('#wound-host .wd').length<=1){alert('At least one wound is required.');return;}if(confirm('Remove this wound?'))card.remove();};
+head.appendChild(el('div','wt','Wound '+(i+1)));head.appendChild(rm);
+card.appendChild(head);
+var sz=w.size||{},ts=w.tissue||{},ex=w.exudate||{};
+/* site + etiology */
+var g1=el('div','g2');
+g1.appendChild(fd('Site',ii('w_site_'+i,w.site||'')));
+g1.appendChild(fd('Etiology / type',ii('w_etiology_'+i,w.etiology||'')));
+card.appendChild(g1);
+/* duration + size */
+var g2=el('div','g4');
+g2.appendChild(fd('Duration',ii('w_duration_'+i,w.duration||'')));
+g2.appendChild(fd('L (cm)',ii('w_l_'+i,sz.l!=null?sz.l:'')));
+g2.appendChild(fd('W (cm)',ii('w_w_'+i,sz.w!=null?sz.w:'')));
+g2.appendChild(fd('D (cm)',ii('w_d_'+i,sz.d!=null?sz.d:'')));
+card.appendChild(g2);
+/* tissue % */
+var g3=el('div','g4');
+g3.appendChild(fd('Granulation %',ii('w_gran_'+i,ts.granulation!=null?ts.granulation:'')));
+g3.appendChild(fd('Slough %',ii('w_slough_'+i,ts.slough!=null?ts.slough:'')));
+g3.appendChild(fd('Eschar %',ii('w_eschar_'+i,ts.eschar!=null?ts.eschar:'')));
+g3.appendChild(fd('Epithelial %',ii('w_epi_'+i,ts.epithelial!=null?ts.epithelial:'')));
+card.appendChild(g3);
+/* exudate + edges + periwound */
+var g4=el('div','g2');
+g4.appendChild(fd('Exudate amount',ii('w_examt_'+i,ex.amount||'')));
+g4.appendChild(fd('Exudate type',ii('w_extype_'+i,ex.type||'')));
+card.appendChild(g4);
+var g5=el('div','g2');
+g5.appendChild(fd('Edges',ii('w_edges_'+i,w.edges||'')));
+g5.appendChild(fd('Peri-wound',ii('w_peri_'+i,w.periwound||'')));
+card.appendChild(g5);
+var g6=el('div','g3');
+g6.appendChild(fd('Odor',ii('w_odor_'+i,w.odor||'')));
+g6.appendChild(fd('Pain',ii('w_pain_'+i,w.pain||'')));
+g6.appendChild(fd('Photos',ii('w_photos_'+i,w.photos_ref||'')));
+card.appendChild(g6);
+/* infection signs */
+var infD=el('div','fg');infD.appendChild(el('div','lbx','Infection signs (empty = none noted)'));infD.appendChild(mkChkList('w_infection_'+i,w.infection_signs,'Add sign'));card.appendChild(infD);
+/* current dressing */
+card.appendChild(fd('Current dressing',ii('w_dressing_'+i,w.current_dressing||'')));
+return card;
+}
+function refreshCompSafe(){
+var safe=document.getElementById('compsafe');if(!safe)return;
+var comp=gv('pl_compression');var abi=gv('l_abi');
+/* show banner when a compression is planned but ABI is not confirmed adequate, or the plan is explicitly held */
+var wantsComp=comp&&!compHeld(comp);
+var show=(wantsComp&&!abiAdequate(abi))||(!comp);
+if(show)safe.classList.add('on');else safe.classList.remove('on');
+}
+
+/* ---- generate the plain-text wound note ---- */
+function gSCM(){
+if(!D){alert('Load a patient first (paste JSON or click Sample).');return;}
+var b='';
+var agesex=gv('p_agesex')||'—';
+var setting=gv('p_setting');
+b='WOUND CARE NOTE — '+agesex+' | '+td()+(setting?' | '+setting:'')+'\n';
+b+='------------------------------------------------------------\n';
+var hx=readChkList('hx_list');
+if(hx.length)b+='\nRelevant history: '+hx.join('; ')+'\n';
+var meds=readChkList('meds_list');
+if(meds.length)b+='Relevant meds: '+meds.join('; ')+'\n';
+/* wounds */
+var cards=document.querySelectorAll('#wound-host .wd');
+var multi=cards.length>1;
+cards.forEach(function(card,n){
+var i=card.getAttribute('data-widx');
+var site=gv('w_site_'+i),etio=gv('w_etiology_'+i),dur=gv('w_duration_'+i);
+var L=gv('w_l_'+i),W=gv('w_w_'+i),Dp=gv('w_d_'+i);
+var gran=gv('w_gran_'+i),slo=gv('w_slough_'+i),esc2=gv('w_eschar_'+i),epi=gv('w_epi_'+i);
+var examt=gv('w_examt_'+i),extype=gv('w_extype_'+i);
+var edges=gv('w_edges_'+i),peri=gv('w_peri_'+i);
+var odor=gv('w_odor_'+i),pain=gv('w_pain_'+i),photos=gv('w_photos_'+i);
+var dress=gv('w_dressing_'+i);
+var inf=readChkList('w_infection_'+i);
+b+='\n'+(multi?'WOUND '+(n+1)+':':'WOUND:')+' '+(site||'(site not specified)')+'\n';
+var line1=[];
+if(etio)line1.push('Etiology: '+etio);
+if(dur)line1.push('Duration: '+dur);
+if(line1.length)b+='  '+line1.join('  |  ')+'\n';
+if(L||W||Dp){var sz=[L?L:'?',W?W:'?',Dp?Dp:'?'].join(' x ');b+='  Size: '+sz+' cm (L x W x D)\n';}
+var tiss=[];
+if(gran)tiss.push(gran+'% granulation');if(slo)tiss.push(slo+'% slough');if(esc2)tiss.push(esc2+'% eschar');if(epi)tiss.push(epi+'% epithelial');
+if(tiss.length)b+='  Wound bed: '+tiss.join(', ')+'\n';
+if(examt||extype)b+='  Exudate: '+[examt,extype].filter(function(x){return x;}).join(', ')+'\n';
+if(edges)b+='  Edges: '+edges+'\n';
+if(peri)b+='  Peri-wound: '+peri+'\n';
+var misc=[];
+if(odor)misc.push('Odor: '+odor);if(pain)misc.push('Pain: '+pain);
+if(misc.length)b+='  '+misc.join('  |  ')+'\n';
+b+='  Infection signs: '+(inf.length?inf.join(', '):'none noted')+'\n';
+if(dress)b+='  Current dressing: '+dress+'\n';
+if(photos)b+='  Photos: '+photos+'\n';
+});
+/* limb */
+var pulses=gv('l_pulses'),edema=gv('l_edema'),abi=gv('l_abi'),skin=gv('l_skin'),limbImp=gv('l_impression');
+if(pulses||edema||abi||skin||limbImp){
+b+='\nLOWER LIMB:\n';
+if(pulses)b+='  Pulses: '+pulses+'\n';
+if(edema)b+='  Edema: '+edema+'\n';
+if(abi)b+='  ABI: '+abi+'\n';
+if(skin)b+='  Skin: '+skin+'\n';
+if(limbImp)b+='  Impression: '+limbImp+'\n';
+}
+/* impression */
+var imp=gv('impression');
+if(imp)b+='\nIMPRESSION:\n  '+imp.replace(/\n/g,'\n  ')+'\n';
+/* plan */
+b+='\nPLAN:\n';
+[['pl_cleansing','Cleansing'],['pl_debridement','Debridement'],['pl_dressing','Dressing']].forEach(function(f){var v=gv(f[0]);if(v)b+='  '+f[1]+': '+v+'\n';});
+/* compression — ABI-gated safety */
+var comp=gv('pl_compression');
+if(comp&&!compHeld(comp)&&!abiAdequate(abi)){
+b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
+}else if(comp){
+b+='  Compression: '+comp+'\n';
+}else{
+b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
+}
+[['pl_offloading','Offloading'],['pl_nutrition_adjuncts','Nutrition / adjuncts'],['pl_referral','Referral'],['pl_followup','Follow-up']].forEach(function(f){var v=gv(f[0]);if(v)b+='  '+f[1]+': '+v+'\n';});
+var cite=gv('pl_guideline_cite');if(cite)b+='  Guideline: '+cite+'\n';
+/* escalate */
+var esc3=readChkList('escalate_list');
+if(esc3.length){b+='\n** ESCALATE — RED FLAGS **\n';esc3.forEach(function(l){b+='  ! '+l+'\n';});}
+/* goals */
+var goals=gv('goals');
+if(goals)b+='\nGOALS: '+goals+'\n';
+/* footer */
+b+='\n------------------------------------------------------------\n';
+b+='AI-compiled documentation aid — verify against the International Wound Care\nGuidelines and local SHA protocol before use. RN assessment and clinical\njudgment govern. Signed: ______________________  Date: '+td()+'\n';
+SCM=b;
+document.getElementById('scm').textContent=b;
+document.getElementById('sp').style.display='block';
+document.getElementById('sp').scrollIntoView({behavior:'smooth'});
+}
+
+/* ---- output actions ---- */
+function copyOutput(){
+if(!SCM){alert('Generate the wound note first.');return;}
+var btn=document.getElementById('cbtn');
+var done=function(){if(btn){btn.textContent='✓ Copied!';setTimeout(function(){btn.textContent='📋 Copy to Clipboard';},2500);}};
+var execFallback=function(){
+var t=document.createElement('textarea');t.value=SCM;t.style.cssText='position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;border:0;padding:0';
+document.body.appendChild(t);t.focus();t.select();
+var ok=false;try{ok=document.execCommand('copy');}catch(e){ok=false;}
+document.body.removeChild(t);
+if(ok){done();}
+else{var r=document.createRange();r.selectNode(document.getElementById('scm'));window.getSelection().removeAllRanges();window.getSelection().addRange(r);if(btn){btn.textContent='⚠ Press Ctrl/Cmd+C';setTimeout(function(){btn.textContent='📋 Copy to Clipboard';},3500);}}
+};
+if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(SCM).then(done).catch(execFallback);}else{execFallback();}
+}
+function showPrintTips(){if(!SCM){alert('Generate the wound note first.');return;}document.getElementById('ptips').style.display='flex';}
+function hidePrintTips(){document.getElementById('ptips').style.display='none';}
+function doPrint(){hidePrintTips();setTimeout(function(){window.print();},150);}
+function toggleFullscreen(){
+if(!SCM){alert('Generate the wound note first.');return;}
+var pane=document.getElementById('sp');
+try{
+if(document.fullscreenElement){if(document.exitFullscreen)document.exitFullscreen();return;}
+if(pane.requestFullscreen)pane.requestFullscreen();
+else if(pane.webkitRequestFullscreen)pane.webkitRequestFullscreen();
+else alert('Fullscreen not supported in this browser.');
+}catch(e){alert('Could not toggle fullscreen — '+e.message);}
+}
+function openInNewWindow(){
+if(!SCM){alert('Generate the wound note first.');return;}
+var w=window.open('','_blank','width=820,height=920');
+if(!w){alert('Popup blocked — allow popups for this page to detach the note.');return;}
+var doc='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Wound Care Note</title>'
++'<style>@page{size:A4 portrait;margin:16mm 14mm 14mm 14mm}'
++'body{font-family:Segoe UI,sans-serif;background:#eef6f1;margin:0;padding:16px}'
++'.bar{display:flex;gap:8px;margin-bottom:12px}'
++'.bar button{font:inherit;font-weight:700;border:0;border-radius:6px;padding:9px 14px;cursor:pointer;color:#fff}'
++'.cp{background:#28a745}.pr{background:#1a73e8}.cl{background:#6c757d}'
++'pre{background:#fff;border:1px solid #b6d8c4;border-radius:6px;padding:16px;font-family:Consolas,monospace;font-size:12px;line-height:1.65;white-space:pre-wrap;color:#111}'
++'@media print{.bar{display:none}body{background:#fff;padding:0}pre{border:0;padding:0}}</style></head><body>'
++'<div class="bar"><button class="cp" onclick="cp()">Copy</button><button class="pr" onclick="window.print()">Print</button><button class="cl" onclick="window.close()">Close</button></div>'
++'<pre id="n">'+esc(SCM)+'</pre>'
++'<scr'+'ipt>function cp(){var t=document.getElementById("n");var r=document.createRange();r.selectNode(t);var s=window.getSelection();s.removeAllRanges();s.addRange(r);var ok=false;try{ok=document.execCommand("copy");}catch(e){}s.removeAllRanges();var b=document.querySelector(".cp");b.textContent=ok?"Copied":"Press Ctrl/Cmd+C";setTimeout(function(){b.textContent="Copy";},2200);}</scr'+'ipt>'
++'</body></html>';
+w.document.open();w.document.write(doc);w.document.close();
+}
+
+/* ---- de-identified sample (§0: Age · Sex · relevant hx only — no names, MRN, DOB, addresses) ---- */
+var SAMPLE_JSON={
+  "note_type":"wound",
+  "date":"2026-09-17",
+  "patient":{"age_sex":"72F","hx":["T2DM","PVD","venous insufficiency","reduced mobility"]},
+  "visit":{"setting":"home visit","visit_number":3},
+  "meds_relevant":["Apixaban","Prednisone 5 mg daily"],
+  "wounds":[
+    {
+      "site":"R medial lower leg (gaiter area)",
+      "etiology":"venous leg ulcer",
+      "duration":"6 weeks",
+      "size":{"l":3.2,"w":2.1,"d":0.3,"unit":"cm"},
+      "tissue":{"granulation":60,"slough":30,"eschar":0,"epithelial":10},
+      "exudate":{"amount":"moderate","type":"serous"},
+      "periwound":"maceration, hemosiderin staining",
+      "edges":"advancing",
+      "odor":"none",
+      "infection_signs":[],
+      "pain":"3/10",
+      "current_dressing":"foam + 2-layer compression",
+      "photos_ref":"3 photos this visit"
+    }
+  ],
+  "limb":{
+    "pulses":"DP/PT palpable bilaterally",
+    "edema":"1+ pitting to mid-calf",
+    "abi":"0.9 (R)",
+    "skin":"hemosiderin staining, dry, no cellulitis",
+    "impression":"venous-predominant"
+  },
+  "impression":"Venous leg ulcer, improving vs last visit (was 4.0 x 3.0 cm)",
+  "plan":{
+    "cleansing":"NS irrigation",
+    "debridement":"autolytic (dressing-mediated)",
+    "dressing":"foam primary; hydrocolloid if low exudate",
+    "compression":"continue 2-layer — ABI 0.9 adequate",
+    "offloading":"",
+    "nutrition_adjuncts":"protein optimization",
+    "referral":"vascular if ABI < 0.8 or non-healing at 4 weeks",
+    "followup":"reassess in 1 week",
+    "guideline_cite":"International Wound Care Guidelines — venous ulcer / compression section"
+  },
+  "escalate":[],
+  "goals":"Full closure; maintain compression concordance"
+};
+</script>
+</body>
+</html>
