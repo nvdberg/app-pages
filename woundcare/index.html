@@ -130,6 +130,12 @@ input[type=text]:focus{outline:none;border-color:#28a745}
 <div id="fp" class="noprint"></div>
 <div id="sp" class="scp">
   <h3>✓ Wound Note Ready</h3>
+  <div id="rnbar" class="noprint" style="background:#fff8e1;border:1px solid #e0b400;border-left:4px solid #e0b400;border-radius:5px;padding:10px 12px;margin:0 0 12px;font-size:12px;line-height:1.5;color:#5a4500">
+    <b>Before you paste:</b> this is a drafting aid. Read it through, verify against
+    <b>SHA 0157 (12/23)</b> and local SHA protocol, edit anything that isn't right, and sign it
+    as your own note. Your assessment and clinical judgment govern.
+    <span style="display:block;margin-top:5px">This reminder stays on screen — it is <b>not</b> copied into the note.</span>
+  </div>
   <div id="scm" class="scm"></div>
   <div class="scp-btns" style="display:flex;gap:10px;margin-top:12px">
     <button onclick="gSCM()" style="flex:1;background:#1a73e8;color:#fff;border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⚡ Regenerate</button>
@@ -472,9 +478,9 @@ if(esc3.length){b+='\n** ESCALATE — RED FLAGS **\n';esc3.forEach(function(l){b
 /* goals */
 var goals=gv('goals');
 if(goals){b+='\nGOALS:\n'+wrapPlain(goals,'  ');}
-/* footer */
-b+='\n------------------------------------------------------------\n';
-b+='AI-compiled documentation aid — verify against SHA 0157 (12/23) Lower Limb\nAssessment and local SHA protocol before use. RN assessment and clinical\njudgment govern. Signed: ______________________  Date: '+td()+'\n';
+/* no footer — the note is the RN's own documentation, reviewed, edited and
+   signed under her own credentials in SCM/Procura. The verification reminder
+   lives on screen (see #rnbar), never in the chart. */
 SCM=b;
 document.getElementById('scm').textContent=b;
 document.getElementById('sp').style.display='block';
