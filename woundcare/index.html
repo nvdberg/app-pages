@@ -436,8 +436,47 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 function gv(id){var e=document.getElementById(id);return e?(e.value||'').trim():'';}
 function showErr(msg){var eb=document.getElementById('eb');eb.style.display='block';eb.style.whiteSpace='pre-wrap';eb.style.maxHeight='400px';eb.style.overflowY='auto';eb.style.fontFamily='monospace';eb.textContent='⚠ '+msg;}
 /* ABI adequacy: a plan compression is only safe when arterial disease is excluded */
-function abiAdequate(abi){if(!abi)return false;var m=String(abi).match(/-?\d+(\.\d+)?/);if(!m)return false;var n=parseFloat(m[0]);return n>=0.8&&n<=1.3;}
-function compHeld(str){return /held|unknown|not excluded|arterial/i.test(String(str||''));}
+/* Classify an ABPI against the thresholds printed on SHA 0157 (12/23) p.4:
+     >1.4 incompressible -> TBPI, contact MRP · 1.0-1.4 normal
+     0.41-0.99 modified compression if appropriate FOLLOWING ASSESSMENT
+     <=0.4 not indicated, contact MRP
+   Returns: 'unknown' | 'incompressible' | 'normal' | 'modified' | 'none'   */
+function abiBand(abi){
+  var s=String(abi==null?'':abi);
+  if(!s.trim())return 'unknown';
+  if(/not\s*(performed|done)|unable\s*to\s*compress|incompressible|unknown/i.test(s))
+    return /unable\s*to\s*compress|incompressible/i.test(s) ? 'incompressible' : 'unknown';
+  var m=s.match(/(?:^|[^\d.])(0?\.\d+|1\.\d+|[01](?:\.\d+)?)/);
+  if(!m)return 'unknown';
+  var n=parseFloat(m[1]);
+  if(isNaN(n))return 'unknown';
+  if(n>1.4)return 'incompressible';
+  if(n>=1.0)return 'normal';
+  if(n>=0.41)return 'modified';
+  return 'none';
+}
+function abiAdequate(abi){var b=abiBand(abi);return b==='normal'||b==='modified';}
+function compHeld(str){return /held|unknown|not excluded|not indicated/i.test(String(str||''));}
+/* The line the note must carry when the band forbids or qualifies compression. */
+function compGuard(abi,comp){
+  switch(abiBand(abi)){
+    case 'unknown':
+      return '** COMPRESSION HELD — ABI unknown / arterial disease not excluded. '+
+             'Obtain ABPI (SHA 0157 p.4) before applying compression. **';
+    case 'incompressible':
+      return '** COMPRESSION HELD — vessels incompressible (ABPI >1.4 or unable to compress). '+
+             'TBPI required; contact MRP / certified clinician (SHA 0157 p.4). **';
+    case 'none':
+      return '** COMPRESSION NOT INDICATED — ABPI <=0.4. Contact MRP (SHA 0157 p.4). **';
+    case 'modified':
+      /* allowed, but only ever "if appropriate following assessment" */
+      if(!/following assessment|pending|assessment|clinician/i.test(String(comp||'')))
+        return null; /* caller appends the qualifier */
+      return null;
+    default:
+      return null;
+  }
+}
 
 /* checklist (tick / untick / edit / add) */
 function mkChkRow(text,checked){
@@ -638,8 +677,10 @@ function refreshCompSafe(){
 var safe=document.getElementById('compsafe');if(!safe)return;
 var comp=gv('pl_compression');var abi=gv('l_abi');
 /* show banner when a compression is planned but ABI is not confirmed adequate, or the plan is explicitly held */
-var wantsComp=comp&&!compHeld(comp);
-var show=(wantsComp&&!abiAdequate(abi))||(!comp);
+var band=abiBand(abi);
+/* flag whenever the ABPI band forbids compression, or it is in the 0.41-0.99
+   band where SHA 0157 p.4 allows it only after clinician assessment */
+var show=(band==='unknown'||band==='incompressible'||band==='none'||band==='modified')||(!comp);
 if(show)safe.classList.add('on');else safe.classList.remove('on');
 }
 
@@ -728,12 +769,17 @@ b+='\nPLAN:\n';
 [['pl_cleansing','Cleansing'],['pl_debridement','Debridement'],['pl_dressing','Dressing']].forEach(function(f){var v=gv(f[0]);if(v)b+=wrapLab(f[1],v);});
 /* compression — ABI-gated safety */
 var comp=gv('pl_compression');
-if(comp&&!compHeld(comp)&&!abiAdequate(abi)){
-b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
+var guard=compGuard(abi,comp);
+if(guard&&!compHeld(comp)){
+/* band forbids it — the guard replaces whatever the plan said */
+b+=wrapPlain(guard,'  ');
 }else if(comp){
 b+=wrapLab('Compression',comp);
+if(abiBand(abi)==='modified'&&!/following assessment|pending|assessment|clinician/i.test(comp))
+  b+=wrapPlain('^ ABPI 0.41-0.99 — modified compression only IF APPROPRIATE FOLLOWING ASSESSMENT '+
+               'by a certified / accredited wound clinician (SHA 0157 p.4).','      ');
 }else{
-b+='  ** COMPRESSION HELD — ABI unknown / arterial disease not excluded. Confirm ABI >=0.8 before applying compression. **\n';
+b+=wrapPlain(compGuard(abi,'')||'** COMPRESSION HELD — confirm ABPI before applying compression (SHA 0157 p.4). **','  ');
 }
 [['pl_offloading','Offloading'],['pl_nutrition_adjuncts','Nutrition / adjuncts'],['pl_referral','Referral'],['pl_followup','Follow-up']].forEach(function(f){var v=gv(f[0]);if(v)b+=wrapLab(f[1],v);});
 var cite=gv('pl_guideline_cite');if(cite)b+=wrapLab('Guideline',cite);
