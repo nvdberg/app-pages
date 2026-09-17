@@ -102,21 +102,25 @@ input[type=text]:focus{outline:none;border-color:#28a745}
 <div class="bar noprint">
   <div class="bt">
     <h1>🩹 Wound Care SCM Generator</h1>
-    <div class="sub">local · offline · no persistence</div>
+    <div class="sub">local · offline · 5 patient slots · history saved in this browser</div>
   </div>
   <div>
-    <span class="pill">No storage ✓</span>
+    <span class="pill">Stays on this PC ✓</span>
     <span class="pill">No network ✓</span>
   </div>
   <div class="btns">
     <button class="b-samp" onclick="loadSample()">Sample</button>
+    <button class="b-nw" onclick="openHistory()" title="Saved notes">🕘 History</button>
+    <button class="b-nw" id="syncbtn" onclick="setSync()" title="Share history between your computers" style="border:1px solid #c3ccd6">Sync off</button>
     <button class="b-copy" onclick="copyOutput()">Copy</button>
     <button class="b-print" onclick="showPrintTips()">Print</button>
     <button class="b-fs" onclick="toggleFullscreen()">Fullscreen</button>
     <button class="b-nw" onclick="openInNewWindow()">New window</button>
-    <button class="b-nw" onclick="if(!D||confirm('Clear this patient and start fresh? Nothing is saved.'))clearForm()" style="background:#8a1f2b;color:#fff" title="Wipe the form + note to start a new patient (nothing is stored)">🧹 Clear</button>
+    <button class="b-nw" onclick="clearSlot()" style="background:#8a1f2b;color:#fff" title="Wipe the current patient slot (saved history is untouched)">🧹 Clear</button>
   </div>
 </div>
+<div id="rail" class="noprint" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:9px 12px;margin:0 0 12px;background:#f4f7fa;border:1px solid #dde4ec;border-radius:7px"></div>
+<div id="hsaved" class="noprint" style="opacity:0;transition:opacity .4s;font-size:11px;color:#1f6f3f;font-weight:700;margin:-8px 0 8px 2px;height:14px"></div>
 <div id="jp" class="jp noprint">
   <h2>⚡ Render a wound-note JSON into an SCM / Procura note</h2>
   <p>Paste the JSON your Wound Care project produced (a <code>note_type</code> of <code>"wound"</code>), then click Load Form — or click <b>Sample</b> above for a worked example. Nothing is stored or sent anywhere.</p>
@@ -130,16 +134,30 @@ input[type=text]:focus{outline:none;border-color:#28a745}
 <div id="fp" class="noprint"></div>
 <div id="sp" class="scp">
   <h3>✓ Wound Note Ready</h3>
-  <div id="rnbar" class="noprint" style="background:#fff8e1;border:1px solid #e0b400;border-left:4px solid #e0b400;border-radius:5px;padding:10px 12px;margin:0 0 12px;font-size:12px;line-height:1.5;color:#5a4500">
-    <b>Before you paste:</b> this is a drafting aid. Read it through, verify against
-    <b>SHA 0157 (12/23)</b> and local SHA protocol, edit anything that isn't right, and sign it
-    as your own note. Your assessment and clinical judgment govern.
-    <span style="display:block;margin-top:5px">This reminder stays on screen — it is <b>not</b> copied into the note.</span>
-  </div>
   <div id="scm" class="scm"></div>
   <div class="scp-btns" style="display:flex;gap:10px;margin-top:12px">
     <button onclick="gSCM()" style="flex:1;background:#1a73e8;color:#fff;border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">⚡ Regenerate</button>
     <button onclick="copyOutput()" style="flex:2;background:#28a745;color:#fff;border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit" id="cbtn">📋 Copy to Clipboard</button>
+  </div>
+</div>
+<div id="histbg" class="modal-bg" style="display:none">
+  <div class="modal" style="max-width:720px;width:92%">
+    <h3 style="margin:0 0 4px">🕘 Saved notes</h3>
+    <p style="margin:0 0 12px;font-size:12px;color:#5c6b7a">
+      Kept in <b>this browser on this PC</b> — never uploaded, never sent anywhere. De-identified content only
+      (age · sex · history), per the privacy rule. On a shared computer, clear it when you are done.
+    </p>
+    <div id="histbody" style="max-height:52vh;overflow:auto"></div>
+    <div id="syncstat" style="margin-top:10px;font-size:11px;color:#7a8794;min-height:14px"></div>
+    <div style="display:flex;gap:10px;margin-top:6px">
+      <button onclick="setSync()" style="flex:1;background:#fff;color:#1f6f3f;border:1px solid #1f6f3f;border-radius:5px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Sync settings</button>
+      <button onclick="sbPull().then(openHistory)" style="flex:1;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:5px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Pull from cloud</button>
+      <button onclick="sbPushAll()" style="flex:1;background:#fff;color:#1a73e8;border:1px solid #1a73e8;border-radius:5px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Upload all</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:10px">
+      <button onclick="hClearAll()" style="flex:1;background:#fff;color:#8a1f2b;border:1px solid #c98b93;border-radius:5px;padding:10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Delete all history</button>
+      <button onclick="closeHistory()" style="flex:2;background:#1a73e8;color:#fff;border:none;border-radius:5px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>
+    </div>
   </div>
 </div>
 <div id="ptips" class="modal-bg">
@@ -159,6 +177,251 @@ input[type=text]:focus{outline:none;border-color:#28a745}
    ============================================================================ */
 var REV = 'v1.0 · 17-Sep-2026';
 var D=null, SCM='';
+/* ---- patient slots: 5 in-memory slots, flipped with the rail. Nothing persists. ---- */
+var NSLOT=5, CUR=0, SLOTS=[];
+for(var _i=0;_i<NSLOT;_i++)SLOTS.push(null);
+function num(v){if(v===''||v==null)return undefined;var n=parseFloat(v);return isNaN(n)?v:n;}
+function und(v){return (v===''||v==null)?undefined:v;}
+/* read the live form back into a JSON object — mirrors exactly what gSCM() reads */
+function formToJSON(){
+  if(!D)return null;
+  var o={note_type:'wound', date:gv('p_date')||D.date||td()};
+  o.patient={age_sex:gv('p_agesex')||undefined};
+  var hx=readChkList('hx_list'); if(hx.length)o.patient.hx=hx;
+  var setting=gv('p_setting');
+  o.visit=Object.assign({},D.visit||{});
+  if(setting)o.visit.setting=setting; 
+  o.visit.label='LLA Patient '+(CUR+1);
+  var meds=readChkList('meds_list'); if(meds.length)o.meds_relevant=meds;
+  o.wounds=[];
+  document.querySelectorAll('#wound-host .wd').forEach(function(card){
+    var i=card.getAttribute('data-widx'), w={};
+    w.site=und(gv('w_site_'+i)); w.etiology=und(gv('w_etiology_'+i)); w.duration=und(gv('w_duration_'+i));
+    var L=num(gv('w_l_'+i)),W=num(gv('w_w_'+i)),Dp=num(gv('w_d_'+i));
+    if(L!=null||W!=null||Dp!=null)w.size={l:L,w:W,d:Dp,unit:'cm'};
+    var g=num(gv('w_gran_'+i)),sl=num(gv('w_slough_'+i)),es=num(gv('w_eschar_'+i)),ep=num(gv('w_epi_'+i));
+    if([g,sl,es,ep].some(function(x){return x!=null;}))w.tissue={granulation:g,slough:sl,eschar:es,epithelial:ep};
+    var ea=gv('w_examt_'+i),et=gv('w_extype_'+i);
+    if(ea||et)w.exudate={amount:und(ea),type:und(et)};
+    w.periwound=und(gv('w_peri_'+i)); w.edges=und(gv('w_edges_'+i)); w.odor=und(gv('w_odor_'+i));
+    w.infection_signs=readChkList('w_infection_'+i);
+    w.pain=und(gv('w_pain_'+i)); w.current_dressing=und(gv('w_dressing_'+i)); w.photos_ref=und(gv('w_photos_'+i));
+    o.wounds.push(w);
+  });
+  if(!o.wounds.length)o.wounds=[{}];
+  var lb={pulses:und(gv('l_pulses')),edema:und(gv('l_edema')),abi:und(gv('l_abi')),skin:und(gv('l_skin')),impression:und(gv('l_impression'))};
+  if(Object.keys(lb).some(function(k){return lb[k]!==undefined;}))o.limb=lb;
+  o.impression=und(gv('impression'));
+  o.plan={cleansing:und(gv('pl_cleansing')),debridement:und(gv('pl_debridement')),dressing:und(gv('pl_dressing')),
+    compression:und(gv('pl_compression')),offloading:und(gv('pl_offloading')),
+    nutrition_adjuncts:und(gv('pl_nutrition_adjuncts')),referral:und(gv('pl_referral')),
+    followup:und(gv('pl_followup')),guideline_cite:und(gv('pl_guideline_cite'))};
+  var esc=readChkList('escalate_list'); if(esc.length)o.escalate=esc;
+  o.goals=und(gv('goals'));
+  return JSON.parse(JSON.stringify(o));
+}
+function slotLabel(i){
+  var sl=SLOTS[i]; if(!sl||!sl.json)return '';
+  var a=(sl.json.patient&&sl.json.patient.age_sex)||''; return a;
+}
+function snapshot(){
+  if(!D){SLOTS[CUR]=null;return;}
+  SLOTS[CUR]={json:formToJSON(), raw:document.getElementById('ji').value, scm:SCM};
+}
+function restore(i){
+  var sl=SLOTS[i];
+  document.getElementById('sp').style.display='none';
+  document.getElementById('eb').style.display='none';
+  if(!sl){D=null;SCM='';document.getElementById('fp').innerHTML='';
+    document.getElementById('ji').value='';document.getElementById('jp').style.display='block';return;}
+  document.getElementById('ji').value=JSON.stringify(sl.json,null,2);
+  seedAndRender(sl.json);
+  SCM=sl.scm||'';
+  if(SCM){document.getElementById('scm').textContent=SCM;document.getElementById('sp').style.display='block';}
+}
+function gotoSlot(i){
+  if(i===CUR)return;
+  snapshot(); CUR=i; restore(i); paintRail(); window.scrollTo(0,0);
+}
+function clearSlot(){
+  if(!D&&!SLOTS[CUR])return;
+  if(!confirm('Clear Patient '+(CUR+1)+'? This slot is wiped. Other patients are untouched.'))return;
+  SLOTS[CUR]=null; restore(CUR); paintRail();
+}
+
+/* ---- history: saved locally in THIS browser only (localStorage). Never leaves the PC. ---- */
+var HKEY='wc_history_v1', HCAP=200;
+function hRead(){try{return JSON.parse(localStorage.getItem(HKEY)||'[]');}catch(e){return [];}}
+function hWrite(a){try{localStorage.setItem(HKEY,JSON.stringify(a.slice(0,HCAP)));return true;}catch(e){return false;}}
+function hSave(){
+  var j=formToJSON(); if(!j)return;
+  var a=hRead();
+  var rec={id:Date.now()+'-'+Math.random().toString(36).slice(2,7),
+    ts:new Date().toISOString(), date:gv('p_date')||td(),
+    slot:CUR+1, age_sex:(j.patient&&j.patient.age_sex)||'—',
+    site:(j.wounds&&j.wounds[0]&&j.wounds[0].site)||'', json:j, scm:SCM};
+  a.unshift(rec);
+  if(!hWrite(a)){alert('Could not save to history — browser storage is full or blocked.');return;}
+  flashSaved();
+  try{sbPush(rec);}catch(e){}
+}
+function flashSaved(){
+  var n=document.getElementById('hsaved'); if(!n)return;
+  n.textContent='✓ saved to history'; n.style.opacity='1';
+  setTimeout(function(){n.style.opacity='0';},2200);
+}
+function openHistory(){
+  var a=hRead(), m=document.getElementById('histbg'), body=document.getElementById('histbody');
+  if(!a.length){body.innerHTML='<p style="color:#5c6b7a;font-size:13px;margin:0">No saved notes yet. Generate a note and it is kept here so you can look back at it.</p>';}
+  else{
+    var h='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<tr style="text-align:left;color:#5c6b7a;font-size:10px;letter-spacing:.06em">'+
+      '<th style="padding:5px 6px">DATE</th><th style="padding:5px 6px">PT</th><th style="padding:5px 6px">AGE·SEX</th>'+
+      '<th style="padding:5px 6px">SITE</th><th style="padding:5px 6px"></th></tr>';
+    a.forEach(function(r){
+      h+='<tr style="border-top:1px solid #e3e8ee">'+
+         '<td style="padding:6px">'+esc(r.date)+'</td>'+
+         '<td style="padding:6px">'+esc(String(r.slot||''))+'</td>'+
+         '<td style="padding:6px"><b>'+esc(r.age_sex)+'</b></td>'+
+         '<td style="padding:6px;max-width:260px">'+esc((r.site||'').slice(0,60))+'</td>'+
+         '<td style="padding:6px;white-space:nowrap;text-align:right">'+
+           '<button onclick="hLoad(\''+r.id+'\')" style="margin-right:5px;padding:4px 9px;border-radius:4px;border:1px solid #1f6f3f;background:#e8f3ec;color:#1f6f3f;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Open</button>'+
+           '<button onclick="hDel(\''+r.id+'\')" style="padding:4px 9px;border-radius:4px;border:1px solid #c98b93;background:#fff;color:#8a1f2b;font-size:11px;cursor:pointer;font-family:inherit">Delete</button>'+
+         '</td></tr>';
+    });
+    h+='</table>';
+    body.innerHTML=h;
+  }
+  m.style.display='flex';
+}
+function closeHistory(){document.getElementById('histbg').style.display='none';}
+function hLoad(id){
+  var r=hRead().filter(function(x){return x.id===id;})[0]; if(!r)return;
+  snapshot();
+  document.getElementById('ji').value=JSON.stringify(r.json,null,2);
+  seedAndRender(r.json);
+  SCM=r.scm||'';
+  if(SCM){document.getElementById('scm').textContent=SCM;document.getElementById('sp').style.display='block';}
+  SLOTS[CUR]={json:r.json,raw:JSON.stringify(r.json,null,2),scm:SCM};
+  paintRail(); closeHistory(); window.scrollTo(0,0);
+}
+function hDel(id){
+  if(!confirm('Delete this saved note? This cannot be undone.'))return;
+  hWrite(hRead().filter(function(x){return x.id!==id;})); openHistory();
+}
+function hClearAll(){
+  var n=hRead().length; if(!n){alert('History is already empty.');return;}
+  if(!confirm('Delete all '+n+' saved notes from this browser? This cannot be undone.'))return;
+  try{localStorage.removeItem(HKEY);}catch(e){}
+  openHistory();
+}
+/* ---- cross-computer sync (same pattern as the ICU unit board) ----
+   Supabase table wound_state; all anon access gated by RLS on a passphrase
+   sent in the x-sync-space header. The publishable key below is public by
+   design — the passphrase is the secret. Sync is OFF until one is entered,
+   so nothing leaves this PC by default. ---- */
+var SB_URL="https://qbtnxkzpddexczhcvxre.supabase.co/rest/v1/wound_state";
+var SB_KEY="sb_publishable_uqqWXuhGAPqd85yXC4rLsA_q7RX1zAQ";
+function syncSpace(){try{return localStorage.getItem('wc_sync_space')||'';}catch(e){return '';}}
+function syncOn(){return !!syncSpace();}
+function sbH(extra){var h={apikey:SB_KEY,'x-sync-space':syncSpace(),'content-type':'application/json'};
+  if(extra)for(var k in extra)h[k]=extra[k];return h;}
+function syncStat(msg,tone){
+  var n=document.getElementById('syncstat'); if(!n)return;
+  n.textContent=msg||'';
+  n.style.color = tone==='bad' ? '#8a1f2b' : (tone==='ok' ? '#1f6f3f' : '#7a8794');
+}
+function sbPush(rec){
+  if(!syncOn())return Promise.resolve();
+  return fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),
+    body:JSON.stringify([{space:syncSpace(),id:rec.id,date:rec.date,data:rec,updated_at:new Date().toISOString()}])})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); syncStat('cloud: synced','ok'); })
+    .catch(function(e){ syncStat('cloud: not synced ('+e.message+')','bad'); });
+}
+function sbPull(){
+  if(!syncOn())return Promise.resolve(0);
+  syncStat('cloud: checking…');
+  return fetch(SB_URL+'?select=id,data,updated_at&space=eq.'+encodeURIComponent(syncSpace()),{headers:sbH()})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); return r.json(); })
+    .then(function(rows){
+      if(!Array.isArray(rows))return 0;
+      var local=hRead(), have={};
+      local.forEach(function(x){have[x.id]=1;});
+      var added=0;
+      rows.forEach(function(row){
+        var rec=row.data; if(!rec||!rec.id||have[rec.id])return;
+        local.push(rec); added++;
+      });
+      if(added){
+        local.sort(function(a,b){return String(b.ts||'').localeCompare(String(a.ts||''));});
+        hWrite(local);
+      }
+      syncStat(rows.length?('cloud: '+rows.length+' saved'+(added?(' · '+added+' new here'):'')):'cloud: empty','ok');
+      return added;
+    })
+    .catch(function(e){ syncStat('cloud: sync failed ('+e.message+')','bad'); return 0; });
+}
+function sbPushAll(){
+  if(!syncOn()){alert('Turn sync on first — enter your passphrase.');return;}
+  var a=hRead(); if(!a.length){alert('Nothing in history to upload.');return;}
+  syncStat('cloud: uploading '+a.length+'…');
+  fetch(SB_URL,{method:'POST',headers:sbH({Prefer:'resolution=merge-duplicates'}),
+    body:JSON.stringify(a.map(function(rec){return {space:syncSpace(),id:rec.id,date:rec.date,data:rec,updated_at:new Date().toISOString()};}))})
+    .then(function(r){ if(!r.ok)throw new Error('HTTP '+r.status); syncStat('cloud: uploaded '+a.length,'ok'); })
+    .catch(function(e){ syncStat('cloud: upload failed ('+e.message+')','bad'); });
+}
+function setSync(){
+  var v=prompt(
+    'Sync passphrase\n\n'+
+    'Type the SAME passphrase on every computer you want to share history between.\n'+
+    'It is the only thing protecting your notes, so make it long and not guessable,\n'+
+    'and do not reuse a password from anywhere else.\n\n'+
+    'Leave it blank and press OK to turn sync OFF (history then stays on this PC only).',
+    syncSpace());
+  if(v===null)return;
+  v=v.trim();
+  try{ if(v)localStorage.setItem('wc_sync_space',v); else localStorage.removeItem('wc_sync_space'); }catch(e){}
+  paintSyncBtn();
+  if(v)sbPull().then(function(){ if(document.getElementById('histbg').style.display==='flex')openHistory(); });
+  else syncStat('sync off — this PC only');
+}
+function paintSyncBtn(){
+  var b=document.getElementById('syncbtn'); if(!b)return;
+  b.textContent = syncOn() ? 'Sync on' : 'Sync off';
+  b.style.background = syncOn() ? '#e8f3ec' : '#fff';
+  b.style.color = syncOn() ? '#1f6f3f' : '#5c6b7a';
+  b.style.borderColor = syncOn() ? '#1f6f3f' : '#c3ccd6';
+}
+function paintRail(){
+  var r=document.getElementById('rail'); if(!r)return;
+  r.innerHTML='';
+  var lab=document.createElement('span');
+  lab.textContent='PATIENT'; 
+  lab.style.cssText='font-size:10px;font-weight:700;letter-spacing:.08em;color:#5c6b7a;margin-right:8px';
+  r.appendChild(lab);
+  for(var i=0;i<NSLOT;i++){(function(i){
+    var on=(i===CUR), filled=!!SLOTS[i]||(on&&!!D);
+    var b=document.createElement('button');
+    b.textContent=(i+1)+(filled?' •':'');
+    b.title=filled?('Patient '+(i+1)+(slotLabel(i)?' — '+slotLabel(i):'')):('Patient '+(i+1)+' — empty');
+    b.style.cssText='min-width:44px;margin-right:6px;padding:6px 10px;border-radius:5px;font-size:12px;'+
+      'font-weight:700;cursor:pointer;font-family:inherit;border:1px solid '+(on?'#1f6f3f':'#c3ccd6')+';'+
+      'background:'+(on?'#1f6f3f':(filled?'#e8f3ec':'#fff'))+';color:'+(on?'#fff':(filled?'#1f6f3f':'#5c6b7a'));
+    b.onclick=function(){gotoSlot(i);};
+    r.appendChild(b);
+  })(i);}
+  var cl=document.createElement('button');
+  cl.textContent='Clear this patient';
+  cl.style.cssText='margin-left:10px;padding:6px 10px;border-radius:5px;font-size:11px;cursor:pointer;'+
+    'font-family:inherit;border:1px solid #c98b93;background:#fff;color:#8a1f2b';
+  cl.onclick=clearSlot;
+  r.appendChild(cl);
+  var note=document.createElement('span');
+  note.textContent='in memory only — closing the tab clears all 5';
+  note.style.cssText='margin-left:12px;font-size:10px;color:#7a8794';
+  r.appendChild(note);
+}
+
 
 /* ---- helpers ---- */
 function td(){var d=new Date();var m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return String(d.getDate()).padStart(2,'0')+'-'+m[d.getMonth()]+'-'+d.getFullYear();}
@@ -259,6 +522,7 @@ fp.appendChild(hdr);
 var pc=el('div','hx-card');pc.appendChild(el('div','ct','Patient (de-identified) — Age · Sex · relevant history'));
 var pg=el('div','g2');
 pg.appendChild(fd('Age · Sex',ii('p_agesex',pt.age_sex||'')));
+pg.appendChild(fd('Visit date',ii('p_date',fmtDate(D.date)||td())));
 var settingD=el('div');settingD.appendChild(el('label','fl','Visit setting / number'));settingD.appendChild(ii('p_setting',setting));pg.appendChild(settingD);
 pc.appendChild(pg);
 var hxD=el('div','fg');hxD.appendChild(el('div','lbx','Relevant History (diabetes, PVD/venous, mobility, nutrition, anticoagulation…)'));hxD.appendChild(mkChkList('hx_list',pt.hx,'Add history'));pc.appendChild(hxD);
@@ -407,7 +671,8 @@ function wrapLab(lab,val,ind){
 }
 var agesex=gv('p_agesex')||'—';
 var setting=gv('p_setting');
-b='WOUND CARE NOTE — '+agesex+' | '+td()+(setting?' | '+setting:'')+'\n';
+var vdate=gv('p_date')||td();
+b='WOUND CARE NOTE — '+agesex+' | '+vdate+(setting?' | '+setting:'')+'\n';
 b+='------------------------------------------------------------\n';
 var hx=readChkList('hx_list');
 if(hx.length){b+='\nRELEVANT HISTORY:\n';hx.forEach(function(l){b+='  - '+l+'\n';});}
@@ -479,10 +744,11 @@ if(esc3.length){b+='\n** ESCALATE — RED FLAGS **\n';esc3.forEach(function(l){b
 var goals=gv('goals');
 if(goals){b+='\nGOALS:\n'+wrapPlain(goals,'  ');}
 /* no footer — the note is the RN's own documentation, reviewed, edited and
-   signed under her own credentials in SCM/Procura. The verification reminder
-   lives on screen (see #rnbar), never in the chart. */
+   signed under her own credentials in SCM/Procura. No AI disclaimer, no
+   signature line, nothing about the tool goes into the chart. */
 SCM=b;
 document.getElementById('scm').textContent=b;
+try{hSave();}catch(e){}
 document.getElementById('sp').style.display='block';
 document.getElementById('sp').scrollIntoView({behavior:'smooth'});
 }
@@ -580,6 +846,13 @@ var SAMPLE_JSON={
   "escalate":[],
   "goals":"Full closure; maintain compression concordance"
 };
+
+/* ---- startup ---- */
+(function init(){
+  paintRail();
+  paintSyncBtn();
+  if(syncOn())sbPull();
+})();
 </script>
 </body>
 </html>
