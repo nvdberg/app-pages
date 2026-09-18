@@ -119,6 +119,11 @@ input[type=text]:focus{outline:none;border-color:#28a745}
     <button class="b-nw" onclick="clearSlot()" style="background:#8a1f2b;color:#fff" title="Wipe the current patient slot (saved history is untouched)">🧹 Clear</button>
   </div>
 </div>
+<div class="noprint" style="display:flex;gap:6px;margin:0 0 10px">
+  <button id="tab-note" onclick="showTab('note')" style="padding:7px 16px;border-radius:6px;border:1px solid #1f6f3f;background:#1f6f3f;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Note</button>
+  <button id="tab-prompts" onclick="showTab('prompts')" style="padding:7px 16px;border-radius:6px;border:1px solid #c3ccd6;background:#fff;color:#5c6b7a;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Prompts</button>
+</div>
+<div id="promptspanel" class="noprint" style="display:none"></div>
 <div id="rail" class="noprint" style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;padding:9px 12px;margin:0 0 12px;background:#f4f7fa;border:1px solid #dde4ec;border-radius:7px"></div>
 <div id="hsaved" class="noprint" style="opacity:0;transition:opacity .4s;font-size:11px;color:#1f6f3f;font-weight:700;margin:-8px 0 8px 2px;height:14px"></div>
 <div id="jp" class="jp noprint">
@@ -391,6 +396,87 @@ function paintSyncBtn(){
   b.style.background = syncOn() ? '#e8f3ec' : '#fff';
   b.style.color = syncOn() ? '#1f6f3f' : '#5c6b7a';
   b.style.borderColor = syncOn() ? '#1f6f3f' : '#c3ccd6';
+}
+/* ---- tabs: Note (the generator) | Prompts (triggers she copies into Claude) ---- */
+var TAB='note';
+function showTab(t){
+  TAB=t;
+  var noteIds=['rail','jp','fp','eb','sp','hsaved'];
+  noteIds.forEach(function(id){
+    var n=document.getElementById(id); if(!n)return;
+    if(t==='prompts'){ n.dataset.prevDisp=n.style.display; n.style.display='none'; }
+    else { n.style.display = (n.dataset.prevDisp!==undefined? n.dataset.prevDisp : ''); }
+  });
+  var p=document.getElementById('promptspanel');
+  if(p)p.style.display = (t==='prompts')?'block':'none';
+  if(t==='note'){ /* panels that must stay hidden unless they have content */
+    if(!D){var jp=document.getElementById('jp'); if(jp)jp.style.display='block';}
+    if(!SCM){var sp=document.getElementById('sp'); if(sp)sp.style.display='none';}
+    var eb=document.getElementById('eb'); if(eb&&!eb.textContent)eb.style.display='none';
+  }
+  paintTabs(); window.scrollTo(0,0);
+}
+function paintTabs(){
+  [['tab-note','note'],['tab-prompts','prompts']].forEach(function(p){
+    var b=document.getElementById(p[0]); if(!b)return;
+    var on=(TAB===p[1]);
+    b.style.background = on?'#1f6f3f':'#fff';
+    b.style.color      = on?'#fff':'#5c6b7a';
+    b.style.borderColor= on?'#1f6f3f':'#c3ccd6';
+  });
+}
+var PROMPTS=[
+  ['— On the phone, at the visit —',''],
+  ['start shift: DD Mon YYYY',
+   'Opens the day\u2019s CAPTURE chat. One chat for the whole day. Locks Claude to capture only \u2014 it will not write a note, name an etiology, read an ABPI or suggest a dressing, and will not offer to. Aliases: start visits: / start captures:'],
+  ['patient 2 \u2014 what you saw',
+   'Inside a capture chat, just add the photos and say which patient. Back comes a tidy de-identified FIELD CAPTURE block to carry to the PC.'],
+  ['end shift:',
+   'Lists the day\u2019s captures back (patient, age/sex, site) so you can check nothing was missed before you leave.'],
+  ['— At the desk, one chat per patient —',''],
+  ['lla 1:',
+   'LOWER LIMB ASSESSMENT \u2014 the write-up. Paste the capture block + any de-identified SCM labs/notes. Emits the wound JSON you paste into this page. Aliases: lla patient 1: / lla pt 1:'],
+  ['lla 1 update:',
+   'Follow-up visit for the same patient, in the same chat. Carries forward what has not changed and states the trajectory against last visit.'],
+  ['wound 1:',
+   'A wound that is NOT a lower limb \u2014 pressure injury, skin tear, surgical, moisture-associated. Same JSON, no limb block unless relevant.'],
+  ['mode: writeup',
+   'The only thing that lifts the capture lock, if you ever want the write-up done in the capture chat itself. Normally you will not need it.'],
+  ['— In this page —',''],
+  ['Patient 1\u20135',
+   'Five slots you can flip between during a session. Each keeps its own form and note. They live in memory \u2014 closing the tab clears them. Saved notes go to History.'],
+  ['\ud83d\udd58 History',
+   'Every note you generate is kept here. Open one to reload it. Syncs between your computers once Sync is on.'],
+  ['Sync',
+   'Enter the SAME passphrase on each computer to share history. Off by default \u2014 nothing leaves this PC until you set one.']
+];
+function promptsPanel(){
+  var rows=PROMPTS.map(function(p){
+    if(!p[1]) return '<tr><td colspan="3" style="padding:14px 8px 4px;font-size:10px;font-weight:700;'+
+      'letter-spacing:.08em;color:#5c6b7a;text-transform:uppercase">'+esc(p[0].replace(/^—\s*|\s*—$/g,''))+'</td></tr>';
+    return '<tr style="border-top:1px solid #e9eef4">'+
+      '<td style="padding:9px 8px;white-space:nowrap;vertical-align:top">'+
+        '<code style="background:#eef3f8;border:1px solid #dde4ec;border-radius:4px;padding:2px 6px;font-size:12px">'+esc(p[0])+'</code></td>'+
+      '<td style="padding:9px 8px;color:#41505f;font-size:12.5px;line-height:1.5">'+esc(p[1])+'</td>'+
+      '<td style="padding:9px 8px;text-align:right;vertical-align:top">'+
+        '<button onclick="copyPrompt(this,\''+esc(p[0]).replace(/'/g,"\\'")+'\')" '+
+        'style="padding:4px 9px;border-radius:4px;border:1px solid #c3ccd6;background:#fff;color:#5c6b7a;'+
+        'font-size:11px;cursor:pointer;font-family:inherit">Copy</button></td></tr>';
+  }).join('');
+  return '<div style="background:#fff;border:1px solid #dde4ec;border-radius:8px;padding:16px 14px">'+
+    '<b style="font-size:14px">Prompts / triggers</b>'+
+    '<p style="margin:6px 0 4px;font-size:12px;color:#5c6b7a">Type these into the <b>Wound Care</b> project in Claude. '+
+    'The phone chat is capture-only by design \u2014 recommendations wait until you are at the desk with the ABPI page and the guideline cards.</p>'+
+    '<table style="width:100%;border-collapse:collapse;margin-top:8px">'+rows+'</table></div>';
+}
+function copyPrompt(btn,txt){
+  var done=function(){var o=btn.textContent;btn.textContent='\u2713';setTimeout(function(){btn.textContent=o;},1200);};
+  try{ navigator.clipboard.writeText(txt).then(done,function(){fallbackCopy(txt);done();}); }
+  catch(e){ fallbackCopy(txt); done(); }
+}
+function fallbackCopy(txt){
+  var t=document.createElement('textarea'); t.value=txt; document.body.appendChild(t);
+  t.select(); try{document.execCommand('copy');}catch(e){} document.body.removeChild(t);
 }
 function paintRail(){
   var r=document.getElementById('rail'); if(!r)return;
@@ -897,6 +983,9 @@ var SAMPLE_JSON={
 (function init(){
   paintRail();
   paintSyncBtn();
+  var pp=document.getElementById('promptspanel');
+  if(pp)pp.innerHTML=promptsPanel();
+  paintTabs();
   if(syncOn())sbPull();
 })();
 </script>
