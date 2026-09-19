@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.81 · 18-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.82 · 19-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -2056,6 +2056,7 @@ function promptsPanel(){
     ['icu consult:','🚑 Rapid Response ward consult → timestamped card in the Rapid Response view. States reason + outcome (admit / watch / decline); a decline auto-adds the return-precautions safety-net line. Paste JSON (± photo).'],
     ['icu code blue:','🚑 Code-blue capture — paste the code-sheet photo → concise card (rhythm · downtime · ROSC · interventions · dispo). Lives in Rapid Response.'],
     ['icu prep Bed N:','🅿️ Next-day PARK draft — stable fields only (history / course / PMHx). Paste → Park tab; day-of hit 📋 Copy prep JSON → paste into an "icu daily update Bed N:" chat with the day\'s vitals/labs → the note consolidates prep + new data.'],
+    ['icu deep prep Bed N:','🧠🅿️ HEAVY-TIER park for a long-stayer — the two-pass consolidation (map → working Dx + acuity problem list) done ahead of time and parked with stable fields only. Front-loads the heavy history synthesis so the morning is a fast "icu deep update". Paste ONLY the JSON block → Park tab.'],
     ['(unit) Rapid Response','Pick from the Unit dropdown (auto-selected on RR days). A timestamped worklist of your consults / codes / admissions — all kept here, revisit/edit by time; own History per shift.'],
     ['(tab) 🅿️ Park','Parked prep drafts with a summary (ICU day · admit · working dx · done · plan). Day-of: 📋 Copy prep JSON → paste into "icu daily update Bed N:" with the day\'s data. "Clear → archive" starts a fresh list without deleting (Archived + Restore).'],
     ['handover bed N:','COLLEAGUE bed you did NOT chart → the FAST path: one condensed full-quality card (hv:1), no full note. Paste JSON → appears on Handover tab.'],
