@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.83 · 19-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.84 · 19-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1165,14 +1165,20 @@ function renderBedBar(){
     '<button class="sec" onclick="clearGenerated()" title="Discard the generated SCM note for this bed (patient data stays) — then regenerate">↻ Clear note</button>'+
     '<button class="sec" onclick="newAdmission(\''+current+'\')" title="Archive this note & start a new patient here">＋ New pt</button>'+
     '<button class="sec" onclick="transferBed(\''+current+'\')" title="Transfer/discharge: archive note & clear">⇥ Transfer / DC</button>'+
-    '<button class="sec" style="color:#933" onclick="hardDeleteBed(\''+current+'\')" title="PROTOTYPING: delete this bed outright — no archive, no history. For clearing test runs.">🗑 Delete (test)</button>';
+    '<button class="sec" style="color:#933" onclick="hardDeleteBed(\''+current+'\')" title="Remove this bed — you choose: archive to history (recoverable) or permanent delete (no trace).">🗑 Delete</button>';
 }
-// PROTOTYPING hard-delete — removes a bed outright, NO archive/history (unlike Transfer/DC + New pt).
-// For clearing test-run beds while trying different models. Guarded by a confirm.
+// Delete a bed — offers a choice: archive to history first (recoverable), or permanent delete (no archive).
+// (Transfer/DC + New pt always archive; this is the one that lets you skip the archive for test runs.)
 function hardDeleteBed(n){ if(!guardEdit())return; if(!beds[n])return;
-  if(!confirm('DELETE '+(/^U/.test(String(n))?'this patient':'Bed '+n)+' outright?\n\nNo archive, no history — this is the prototyping hard-delete for clearing test runs. Gone for good.'))return;
+  var label=(/^U/.test(String(n))?'this patient':'Bed '+n);
+  // OK = archive to history (recoverable). Cancel = go to the permanent-delete confirm.
+  if(confirm('Remove '+label+' — archive it first?\n\n• OK  →  Archive to History, then remove (recoverable)\n• Cancel  →  choose permanent delete next')){
+    archiveBed(n,'deleted'); delete beds[n]; if(current===n)current=null; save(); renderRail(); renderView();
+    hovFlash(label+' archived to History & removed'); return;
+  }
+  if(!confirm('Permanently DELETE '+label+'?\n\nNo archive, no History entry — gone for good.\n\n• OK  →  delete permanently\n• Cancel  →  keep the bed'))return;
   delete beds[n]; if(current===n)current=null; save(); renderRail(); renderView();
-  hovFlash((/^U/.test(String(n))?'Entry':'Bed '+n)+' deleted (no archive)'); }
+  hovFlash(label+' deleted (no archive)'); }
 function clearGenerated(){ if(!guardEdit())return; if(current==null||!beds[current])return;
   if(!confirm('Clear the generated note for '+(/^U/.test(String(current))?'this patient':'Bed '+current)+'?\n\nThe patient data stays — only the previously generated SCM block is cleared, so you can regenerate it fresh.'))return;
   delete beds[current]._scm; save(); renderView(); hovFlash('Generated note cleared — regenerate in the tool'); }
