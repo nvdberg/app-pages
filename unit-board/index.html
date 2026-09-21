@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.85 · 19-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.86 · 21-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -452,6 +452,31 @@ function hvAllergy(a){
       : hvLines(a);
   return items.filter(Boolean).filter(function(s){ return !/^(nkda|nka|none|no known|nil|denies)\b/i.test(s); }).join(' · ');
 }
+// Central guard (feedback 21-Sep, Bed 2): tags on the pre-built paths (colleague mini-card, authored card)
+// arrive verbatim — an allergy authored from raw objects string-coerces to "[object Object]". Never print it:
+// drop the [object Object] segments, keep any real ones; if a tag empties out (esp. an allergy chip), omit it.
+function hvSanitizeTags(tags){
+  if(!Array.isArray(tags)) return [];
+  return tags.map(function(t){
+    if(!t) return null;
+    var text=String(t.text==null?'':t.text);
+    if(/\[object\b/i.test(text)){
+      // split label from value on the first ": ", scrub the value's " · "-joined segments
+      var m=text.match(/^(.*?:\s*)([\s\S]*)$/);
+      var lbl=m?m[1]:'', val=m?m[2]:text;
+      var kept=val.split(' · ').map(function(s){return s.trim();})
+                  .filter(function(s){ return s && !/\[object\b/i.test(s); });
+      if(!kept.length) return null;            // nothing real left → omit the chip entirely
+      text=(m?lbl:'')+kept.join(' · ');
+    }
+    text=hvClean(text);
+    // Transfer-chip self-check (feedback 21-Sep, Beds 2/4): a bare "→ <ICU-unit>" with no source and no
+    // date is a mis-encoded INBOUND, not an outbound dispo — suppress rather than render "→ ICU"/"→ PICUSU".
+    // Legit outbound chips point at a ward / home / rehab / step-down (with detail), so they never match.
+    if(/transfer-tag/.test(t.cls||'') && /^[→\-\s]*(ICU|PICUSU|PICU|MICU|SICU|CCU|CSU|MSU)\s*$/i.test(text)) return null;
+    return text ? {cls:t.cls, text:text} : null;
+  }).filter(Boolean);
+}
 // safety-flagged (**) lines first, so the length caps trim non-flagged content before a safety line
 function hvPrioritize(arr){ var f=[],r=[]; arr.forEach(function(l){ (/^\s*\*\*/.test(l)?f:r).push(l); }); return f.concat(r); }
 // Extract a terse cath/PCI summary from hospital_course / presentation / problem contexts — e.g. "PCI 2 DES RCA/PDA".
@@ -634,7 +659,7 @@ function bedToHandover(d, overnight, uncap){
   var hasWatch=(d.tasks||[]).some(function(t){return t&&t.kind==='watch';});
   var alertFlag=/^(M2|C1|C2)/.test(gocStat)||hasWatch;   // escalation-limited ceilings only (M1/R3 still get active care)
 
-  var bed={ pt:pt, goc:gocClass, alert:alertFlag, tags:tags.slice(0,3),
+  var bed={ pt:pt, goc:gocClass, alert:alertFlag, tags:tags.slice(0,3), reason:hvClean(d.reason_for_icu),   // WHY-ICU row (feedback 21-Sep): ≤7-word reason-for-ICU tag, Concise-only, omitted when empty
     admit:admit, event:event, overnight:ovn, dx:dx, pmhx:pmhx, tx:tx, goc_text:goc_text, plan:plan };
   if(ovn) bed._ovn_show=true;   // auto-reveal the green strip
   return bed;
@@ -654,7 +679,7 @@ function hvUnitCfg(boardUnit){
 function normHvCard(c, overnight){
   c=c||{};
   var ovn=hvClean(overnight||c.overnight);
-  var bed={ pt:hvClean(c.pt), goc:c.goc||'goc-uk', alert:!!c.alert, tags:(c.tags||[]).slice(0,3),
+  var bed={ pt:hvClean(c.pt), goc:c.goc||'goc-uk', alert:!!c.alert, tags:(c.tags||[]).slice(0,3), reason:hvClean(c.reason_for_icu),
     admit:hvClean(c.admit), event:hvClean(c.event), overnight:ovn, dx:hvClean(c.dx),
     pmhx:hvClean(c.pmhx), tx:hvClean(c.tx), goc_text:hvClean(c.goc_text), plan:hvClean(c.plan) };
   if(ovn) bed._ovn_show=true;
@@ -672,6 +697,7 @@ function authoredCard(d, overnight, uncap){
     goc: h.goc || hvGocClass(goc&&goc.goc_status),
     alert: !!h.alert,
     tags: (h.tags||[]).slice(0,3),
+    reason: hvClean(h.reason_for_icu||d.reason_for_icu),
     admit: hvCap(h.admit||d.subtitle, CAP.admit),
     event: hvCap(h.event, CAP.event),
     overnight: ovn,
@@ -695,6 +721,7 @@ function buildHandoverD(boardUnit, bedsMap, uncap){
                       : (w&&w.d&&w.d.handover) ? authoredCard(w.d, w.overnight, uncap)   // pre-authored (gold)
                       : (w&&w.d)               ? bedToHandover(w.d, w.overnight, uncap)  // transform (fallback)
                       :                          {empty:true};
+      var _bb=beds[String(n)]; if(_bb&&_bb.tags) _bb.tags=hvSanitizeTags(_bb.tags);   // central guard: no "[object Object]" chip ever reaches Concise/Handover (feedback 21-Sep)
     } catch(e){
       beds[String(n)] = { pt:'Bed '+n, admit:'⚠ render error — open this bed and re-paste', _err:String(e&&e.message||e), goc:'goc-uk', tags:[] };
     }
@@ -1457,15 +1484,16 @@ function conciseCards(D){
     }
     var g=GOC_META[b.goc]||GOC_META['goc-uk'];
     var dx=cFit(refShiftText(b.admit||b.dx),170), rx=cFit(refShiftText(b.tx),185), pend=cFit(refShiftText(b.plan),180), ovn=cCap(b.overnight,120);  // day-counters cascaded by the consumption-date offset
+    var why=cCap(b.reason,64);  // WHY-ICU: ≤7-word reason-for-ICU tag, one-glance framing above Dx (feedback 21-Sep); omitted when empty
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
     function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
     // Surg row (SICU/CSU post-op) — procedure + POD from the bed's §10 data; only shows when a procedure is present (never an empty row)
     var _d=(beds[k]&&beds[k].d)?beds[k].d:null;
     var _surg=''; if(_d&&_d.procedure){ var pd=(_d.pod!=null&&_d.pod!=='')?' · POD '+(refDayShift(_d.pod)):''; _surg=cFit(hvClean?hvClean(_d.procedure):(''+_d.procedure),120)+pd; }
-    var rows=crow('admit','Dx',dx)+(_surg?crow('surg','Surg',_surg):'')+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
+    var rows=(why?crow('reason','Why',why):'')+crow('admit','Dx',dx)+(_surg?crow('surg','Surg',_surg):'')+crow('overnight','O/N',ovn)+crow('tx','Rx',rx)+crow('plan','Pend',pend);
     // A bed with no patient descriptor AND no content is an empty slot that wasn't flagged `empty` — render it as the clean "— open —" placeholder (no Dx/O/N/Rx/Pend skeleton, no "? · GoC unknown"), 15-Sep-2026
-    if(!b.pt && !dx && !rx && !pend && !ovn && !_surg){
+    if(!b.pt && !dx && !rx && !pend && !ovn && !_surg && !why){
       return '<div class="ccard empty" data-bed="'+k+'"><div class="cmain"><div class="chd"><span class="cbed">Bed '+k+'</span><span class="cempty">— open —</span></div></div>'+notes+'</div>';
     }
     var main='<div class="cmain">'
