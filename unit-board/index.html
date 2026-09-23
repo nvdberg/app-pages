@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.96 · 22-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v1.97 · 22-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1377,6 +1377,7 @@ function transferBed(n){ if(!guardEdit())return; if(!beds[n])return; var r=promp
 // ---- handover: gold-format render (embedded ICU-Handover-Universal) + print options + colleague paste ----
 function renderHandover(view){
   var D=hovOverride||buildHandoverD(unit, beds);
+  if(D&&hovOverride){ var hc=hvUnitCfg(D.unit); if(hc&&D.unit!==hc.tool){ D=JSON.parse(JSON.stringify(D)); D.unit=hc.tool; } }   // v2 saved with board name ('PICU+PICUSU') rendered as MICU + dropped bed 11
   if(!D){
     view.innerHTML='<div class="panel"><div class="stub"><b>'+esc(unit)+'</b> is admission-only — no handover sheet. Handover is for MICU · SICU · CCU · PICU+PICUSU.</div></div>';
     return;
@@ -1404,12 +1405,22 @@ function renderHandover(view){
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div id="hvview"></div>'+coll+'</div>';
   var host=document.getElementById('hvview');
   var f=document.createElement('iframe'); f.id='hvframe';
-  var over='<style>.unit-btns{display:none!important}body{zoom:'+hvOpts.font+'}'
+  // 4 beds per A4 page (22-Sep-2026): the tool's page-wrap is 280mm (built for 7mm margins) — with the
+  // board's ≥12mm margins the 4th row spilled onto its own page (PICU printed 6 pages). Size the page-wrap
+  // to the real printable height and cap the row so 4 rows + header + spacing always fit. zoom scales mm too.
+  var hvZ=hvOpts.font||1, hvPg=297-2*hvOpts.margin-1, hvFit=Math.floor((hvPg-18)/4), hvRow=Math.min(hvOpts.rowmm,hvFit/hvZ);
+  var over='<style>.unit-btns{display:none!important}body{zoom:'+hvZ+'}'
     +'@page{size:A4 portrait;margin:'+hvOpts.margin+'mm 3mm}'
-    +'.bed-card,.notes-cell-content{height:'+hvOpts.rowmm+'mm!important;max-height:'+hvOpts.rowmm+'mm!important}'
+    +'.bed-card,.notes-cell-content{height:'+hvRow+'mm!important;max-height:'+hvRow+'mm!important}'
+    +'@media print{.page-wrap{height:'+(hvPg/hvZ)+'mm!important;overflow:hidden}'
+    +'.bed-cell,.notes-cell{height:'+hvRow+'mm!important}'
+    +'.bed-cell>.bed-card,.notes-cell>.notes-cell-content,.bed-card.empty-card{height:'+hvRow+'mm!important;max-height:'+hvRow+'mm!important}'   /* match the tool\'s selector specificity — plain .bed-card lost, so Row mm never applied in print */
+    +'.notes-cell{width:'+(60/hvZ)+'mm!important}}'   /* narrower notes → wider bed text, less clipping */
     +'</style></head>';
   // cascade the consumption-date offset onto day-counters before injecting into the handover tool
+  var hvOff0=hvDayOffset; if(D.dayoff!=null) hvDayOffset=Math.max(0,hvOff0-D.dayoff);   // v2 text already carries the offset it was saved at — don't shift twice
   var Dh=hvDayOffset ? (function(){ var c=JSON.parse(JSON.stringify(D)); Object.keys(c.beds).forEach(function(k){ var b=c.beds[k]; if(b&&!b.empty){ if(b.pt)b.pt=refShiftPtDay(b.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(b[f])b[f]=refShiftText(b[f]); }); } }); return c; })() : D;
+  hvDayOffset=hvOff0;
   var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(Dh)+';');
   f.srcdoc=html; host.appendChild(f);
 }
@@ -1426,7 +1437,7 @@ function hovBadge(){ return hovOverride
   ? '<span style="font-weight:800;color:#1f8a4c;background:#e4f5ea;border:1px solid #a5d9ba;border-radius:10px;padding:3px 9px">✏ v2 · your edits</span>'
     +'<button class="sec2" onclick="revertHov()" title="Discard v2, restore the auto-generated version">↩ Revert to auto</button>' : ''; }
 function saveHovFromHandover(){ var f=document.getElementById('hvframe');
-  if(f&&f.contentWindow&&f.contentWindow.captureD){ try{ var D2=f.contentWindow.captureD(); D2.unit=unit; hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }catch(e){ alert('Could not read the edited cards — try again.'); } }
+  if(f&&f.contentWindow&&f.contentWindow.captureD){ try{ var D2=f.contentWindow.captureD(); D2.unit=(hvUnitCfg(unit)||{}).tool||unit; D2.dayoff=hvDayOffset; hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }catch(e){ alert('Could not read the edited cards — try again.'); } }
   else alert('Handover not ready yet.'); }
 function revertHov(){ if(!confirm('Revert to the auto-generated version? Your edited v2 is discarded'+(syncOn()?' on all your devices':'')+'.'))return;
   hovOverride=null; saveHov(); renderView(); hovFlash('Reverted to auto'); }
@@ -1497,7 +1508,7 @@ function conciseCards(D){
     var why=cCap(b.reason,64);  // WHY-ICU: ≤7-word reason-for-ICU tag, one-glance framing above Dx (feedback 21-Sep); omitted when empty
     var flags=(b.tags||[]).filter(function(t){return t&&/alert-tag|aro-tag|transfer-tag|new-tag/.test(t.cls);})
       .map(function(t){return '<span class="cflag '+t.cls+'">'+esc(t.text)+'</span>';}).join('');
-    function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
+    function crow(fld,lbl,val){ return '<div class="crow"><span class="ck">'+lbl+'</span><span class="cv" data-f="'+fld+'" data-o="'+esc(val||'')+'" contenteditable="true">'+esc(val||'')+'</span></div>'; }
     // Surg row (SICU/CSU post-op) — procedure + POD from the bed's §10 data; only shows when a procedure is present (never an empty row)
     var _d=(beds[k]&&beds[k].d)?beds[k].d:null;
     var _surg=''; if(_d&&_d.procedure){ var pd=(_d.pod!=null&&_d.pod!=='')?' · POD '+(refDayShift(_d.pod)):''; _surg=cFit(hvClean?hvClean(_d.procedure):(''+_d.procedure),120)+pd; }
@@ -1563,7 +1574,8 @@ function renderConcise(view){
     +'</div>';
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div id="hvview"></div></div>';
   var f=document.createElement('iframe'); f.id='cframe';
-  f.srcdoc=buildConciseHTML(D); document.getElementById('hvview').appendChild(f);
+  var cOff0=hvDayOffset; if(D.dayoff!=null) hvDayOffset=Math.max(0,cOff0-D.dayoff);
+  try{ f.srcdoc=buildConciseHTML(D); } finally { hvDayOffset=cOff0; } document.getElementById('hvview').appendChild(f);
 }
 function printConcise(){ var f=document.getElementById('cframe');
   if(f&&f.contentWindow){ try{f.contentWindow.focus();f.contentWindow.print();}catch(e){alert('Use Ctrl/Cmd+P inside the sheet.');} } }
@@ -1577,10 +1589,11 @@ function captureConciseD(){
     card.querySelectorAll('[data-f]').forEach(function(el){
       var fld=el.getAttribute('data-f'); var val=(el.textContent||'').replace(/\s+/g,' ').trim();
       if(fld==='notes'){ if(val)bd.notes=val; else delete bd.notes; }
-      else if(!bd.empty){ bd[fld]=val; }   // Dx→admit · O/N→overnight · Rx→tx · Pend→plan
+      else if(!bd.empty){ if(el.hasAttribute('data-o') && val===(el.getAttribute('data-o')||'').replace(/\s+/g,' ').trim()) return;   // unedited → keep base (unshifted, untruncated) text
+        bd[fld]=val; }   // Dx→admit · O/N→overnight · Rx→tx · Pend→plan
     });
   });
-  base.unit=unit; return base;
+  base.unit=(hvUnitCfg(unit)||{}).tool||unit; return base;
 }
 function saveHovFromConcise(){ var D2=captureConciseD();
   if(D2){ hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }
