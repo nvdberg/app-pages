@@ -107,7 +107,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.02 · 23-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.03 · 23-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -167,7 +167,8 @@ function rsGocShort(status){ var s=String(status==null?'':status).toUpperCase().
 function rsShiftNow(){ var d=new Date(); if(d.getHours()<8)d.setDate(d.getDate()-1); return d; }   // 08:00→08:00 shift date
 // parse a YYYY-MM-DD string at LOCAL midnight (avoids the UTC-parse day-shift in UTC−6); pass a Date through unchanged
 function rsLocalDate(x){ if(x instanceof Date)return new Date(x); var m=String(x==null?'':x).match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):new Date(x); }
-function rsDay(admit){ if(!admit)return '?'; var a=rsLocalDate(admit); a.setHours(0,0,0,0); var t=rsShiftNow(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; return isNaN(n)?'?':n; }
+function rsDay(admit){ if(!admit)return '?'; var a=rsLocalDate(admit); a.setHours(0,0,0,0); var t=rsShiftNow(); t.setHours(0,0,0,0); var n=Math.floor((t-a)/86400000)+1; if(isNaN(n))return '?';
+  return n===0?1:n; }   // overnight admit (before the 08:00 boundary) → shift date is still yesterday, so n lands on 0; a patient in the bed is Day 1, never "ICU Day 0"
 function rsDBt(a,b){ if(!a||!b)return 0; var d1=rsLocalDate(a),d2=rsLocalDate(b); d1.setHours(0,0,0,0); d2.setHours(0,0,0,0); var n=Math.round((d2-d1)/86400000); return isNaN(n)?0:n; }
 var RS_UN={sicu:'SICU',ccu:'CCU',micu:'MICU',csu:'CSU',pasqua:'PICU',picu:'PICU',picusu:'PICUSU'};
 // Total hospital + ICU stay (optional §10 fields hospital_admit / prior_icu_stays). null → single-unit, unchanged.
@@ -516,8 +517,19 @@ function hvCap(s, n){ s=hvClean(s);
 // per-field caps tuned to the 67 mm handover cell — keeps content from silently clipping.
 // The JSON should already be authored within these (rules §handover); this is the visible safety net.
 var HVCAP={ admit:95, event:210, dx:170, pmhx:170, tx:185, plan:180, goc_text:95 };
-function hvDay(admit){ if(!admit)return '?'; var a=new Date(admit),t=new Date(); if(t.getHours()<8)t.setDate(t.getDate()-1); t.setHours(0,0,0,0);  // 08:00 shift boundary
-  var n=Math.floor((t-a)/86400000)+1; return (isNaN(n)||n<1)?'?':n; }
+// parse a date-only "YYYY-MM-DD" at LOCAL midnight — new Date("2026-09-22") is UTC midnight, which
+// mis-counts against a LOCAL-midnight "today" (same fix as rsLocalDate / parkLocalMidnight).
+function hvLocalDate(x){ if(x instanceof Date) return new Date(x);
+  var m=String(x==null?'':x).match(/(\d{4})-(\d{2})-(\d{2})/); return m?new Date(+m[1],+m[2]-1,+m[3]):new Date(x); }
+function hvDay(admit){ if(!admit)return '?';
+  var a=hvLocalDate(admit); if(isNaN(a))return '?'; a.setHours(0,0,0,0);
+  var t=new Date(); if(t.getHours()<8)t.setDate(t.getDate()-1); t.setHours(0,0,0,0);  // 08:00 shift boundary
+  var n=Math.floor((t-a)/86400000)+1; if(isNaN(n))return '?';
+  // Admitted overnight (after midnight, before the 08:00 boundary): the shift date is still YESTERDAY,
+  // so the arithmetic lands on 0. A patient already in the bed is Day 1 — never "Day ?", and the
+  // Day-1 "New Admit" chip must still fire. Anything further ahead is a bad admit date → '?'.
+  if(n===0) return 1;
+  return n<1?'?':n; }
 
 // Principle-10 filters: drop continuations / monitor-only / nursing routines / standing PPO orders; keep ACTIVE decisions + safety flags.
 function hvTxKeep(l){
@@ -702,10 +714,16 @@ function authoredCard(d, overnight, uncap){
   var day=hvDay(d.icu_admit);
   var goc=(d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0];
   var ovn=hvClean(overnight||h.overnight);
+  // Day-1 "New Admit" chip: the transform path adds it, so the authored path must too — otherwise a bed
+  // with a pre-authored card loses the new-admit marker. Only when the author didn't already supply one,
+  // and only if there's room, so an allergy / ARO / transfer chip is never pushed out.
+  var _tags=(h.tags||[]).slice(0,3);
+  if(day===1 && _tags.length<3 && !_tags.some(function(t){return t&&/\bnew-tag\b/.test(t.cls||'');}))
+    _tags.push({cls:'new-tag',text:'New Admit'});
   var bed={ pt:hvClean(d.age_sex)+' · Day '+day,
     goc: h.goc || hvGocClass(goc&&goc.goc_status),
     alert: !!h.alert,
-    tags: (h.tags||[]).slice(0,3),
+    tags: _tags,
     reason: hvClean(h.reason_for_icu||d.reason_for_icu),
     admit: hvCap(h.admit||d.subtitle, CAP.admit),
     event: hvCap(h.event, CAP.event),
