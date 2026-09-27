@@ -108,7 +108,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.07 · 27-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.08 · 27-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1357,7 +1357,7 @@ function mergePatch(p){
   (p.pending_add||[]).forEach(function(e){ [d,g].forEach(function(t){ t.tasks=t.tasks||[]; if(!t.tasks.some(function(x){return _mn(x.text)===_mn(e);}))t.tasks.push({text:e,kind:'pending'}); }); });
   if(p._meta){ d._meta=p._meta; }
   delete d.handover; if(p.handover_line==null&&(cnt.add||cnt.stop||cnt.np))delete d.handover_line;   // data moved → stale handover card re-derives
-  w.d=d; w._gen=g; w._rej=rej; delete w._scm;
+  w.d=d; w._gen=g; w._rej=rej; delete w._scm; hovRefreshBed(n);   // a saved v2 handover/concise would otherwise hide the update
   w._mnew=nw; w._mrep=rp; w._mstop=stp; w._moffer=off; w._mat=new Date().toISOString();
   var bits=[]; if(cnt.add)bits.push(cnt.add+' new 🆕'); if(cnt.np)bits.push(cnt.np+' new problem'+(cnt.np>1?'s':'')); if(cnt.stop)bits.push(cnt.stop+' stopped'); if(cnt.res)bits.push(cnt.res+' resolved');
   if(cnt.rep)bits.push(cnt.rep+' re-proposed (left unticked)'); if(cnt.off)bits.push(cnt.off+' ⇄ offer'+(cnt.off>1?'s':'')); if(cnt.skip.length)bits.push('skipped (you removed): '+cnt.skip.join(', '));
@@ -1415,6 +1415,7 @@ function routeEntry(d){ // slot one parsed object into its bed; returns {ok,bed}
   if(beds[n]&&!hv&&beds[n].d){ pointPush(n,'before re-paste'); ['_mnew','_mrep','_mstop','_moffer'].forEach(function(k){delete beds[n][k];}); }   // a full re-paste replaces the note → keep the edited version one ↩ away
   if(beds[n]){ if(hv){beds[n].hvcard=d;} else {beds[n].d=d; beds[n]._gen=gen; beds[n].hvcard=null; delete beds[n]._scm;} }  // re-paste replaces data → drop the stale generated note + reset the style baseline
   else { beds[n]={ d:hv?null:d, _gen:gen, hvcard:hv?d:null, stay:mintStay(), state:'preround', overnight:'', taskDone:[] }; }
+  hovRefreshBed(n);
   return {ok:true, bed:n, hv:hv};
 }
 function loadJSONText(t, srcMsg){
@@ -1580,6 +1581,7 @@ function renderHandover(view){
   var Dh=hvDayOffset ? (function(){ var c=JSON.parse(JSON.stringify(D)); Object.keys(c.beds).forEach(function(k){ var b=c.beds[k]; if(b&&!b.empty){ if(b.pt)b.pt=refShiftPtDay(b.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(b[f])b[f]=refShiftText(b[f]); }); } }); return c; })() : D;
   hvDayOffset=hvOff0;
   var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(Dh)+';');
+  f.addEventListener('load',function(){ gocHook(f,'hv'); });
   f.srcdoc=html; host.appendChild(f);
 }
 function hvAdj(k,delta){
@@ -1677,7 +1679,7 @@ function conciseCards(D){
     }
     var main='<div class="cmain">'
       +'<div class="chd"><span class="cbed">Bed '+k+'</span><span class="cpt">'+esc(refShiftPtDay(b.pt||''))+'</span>'
-      +'<span class="cchip" style="background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span></div>'
+      +'<span class="cchip" data-goc="'+esc(b.goc||'goc-uk')+'" title="Click to set GoC" style="cursor:pointer;background:'+g.bg+';color:'+g.fg+'">'+g.code+' · '+g.lbl+'</span></div>'
       +rows+(flags?'<div class="cflags">'+flags+'</div>':'')+'</div>';
     return '<div class="ccard'+(b.alert?' alert':'')+'" data-bed="'+k+'" style="border-left-color:'+g.bar+'">'+main+notes+'</div>';
   });
@@ -1733,6 +1735,7 @@ function renderConcise(view){
   view.innerHTML='<div style="position:absolute;inset:0;display:flex;flex-direction:column">'+bar+'<div id="hvview"></div></div>';
   var f=document.createElement('iframe'); f.id='cframe';
   var cOff0=hvDayOffset; if(D.dayoff!=null) hvDayOffset=Math.max(0,cOff0-D.dayoff);
+  f.addEventListener('load',function(){ gocHook(f,'c'); });
   try{ f.srcdoc=buildConciseHTML(D); } finally { hvDayOffset=cOff0; } document.getElementById('hvview').appendChild(f);
 }
 function printConcise(){ var f=document.getElementById('cframe');
@@ -1756,6 +1759,71 @@ function captureConciseD(){
 function saveHovFromConcise(){ var D2=captureConciseD();
   if(D2){ hovOverride=D2; saveHov(); renderView(); hovFlash('Saved as v2'+(syncOn()?' · syncing':'')); }
   else alert('Concise not ready yet.'); }
+
+// ---- ✎ Editable GoC on Handover + Concise (v2.08): click the GoC chip → pick R1…C2 / ? + optional note ----
+// Writes THROUGH to the bed (Goals of Care problem in beds[k].d, or the colleague hvcard) — so it survives re-render,
+// PATCH merges, the SCM and the next day — and to a saved v2 if one exists. Updates the chip in place (other unsaved card edits untouched).
+var GOC_PICK=[['goc-r1','R1','Full code'],['goc-r2','R2','No CPR'],['goc-r3','R3','No CPR/intub'],['goc-m1','M1','Medical + transfer'],
+  ['goc-m2','M2','Medical, on-site'],['goc-c1','C1','Comfort'],['goc-c2','C2','Comfort/imminent'],['goc-uk','?','Unknown']];
+function gocRow(cls){ return GOC_PICK.filter(function(r){return r[0]===cls;})[0]||(cls==='goc-full'?GOC_PICK[0]:GOC_PICK[7]); }
+function gocNoteOf(k){ var w=beds[String(k)]||{};
+  if(w.d){ var g=(w.d.problems||[]).filter(function(p){return p&&p.type==='goc';})[0]; return g?(g.goc_note||''):''; }
+  if(w.hvcard) return w.hvcard.goc_note||''; return ''; }
+function setBedGoc(k,cls,note){ k=String(k); var w=beds[k], r=gocRow(cls); cls=r[0];
+  var status=cls==='goc-uk'?'':r[1]+' — '+r[2], txt=(status||'')+(note?(status?' — ':'')+note:'');
+  if(w&&w.d){ var d=w.d; d.problems=d.problems||[];
+    var g=d.problems.filter(function(p){return p&&p.type==='goc';})[0];
+    if(!g&&(status||note)){ g={name:'Goals of Care',type:'goc',goc_status:'',goc_note:'',plan:[]};
+      var di=-1; d.problems.forEach(function(p,i){ if(di<0&&p&&p.type==='dispo')di=i; });
+      if(di<0)d.problems.push(g); else d.problems.splice(di,0,g); }
+    if(g){ g.goc_status=status; if(note!=null)g.goc_note=note; }
+    if(d.handover){ d.handover.goc=cls; d.handover.goc_text=txt; }   // authored card must not mask the new status
+    delete w._scm;   // the generated SCM carries the GoC problem → regenerate
+  } else if(w&&w.hvcard){ w.hvcard.goc=cls; w.hvcard.goc_note=note||''; w.hvcard.goc_text=txt; }
+  if(hovOverride&&hovOverride.beds&&hovOverride.beds[k]){ hovOverride.beds[k].goc=cls; hovOverride.beds[k].goc_text=txt; saveHov(); }
+  save(); return txt; }
+// a saved v2 is a frozen copy — when a bed's data changes (PATCH merge / re-paste), swap that bed for a fresh derive (keep its write-in notes)
+function hovRefreshBed(k){ if(!hovOverride||!hovOverride.beds) return; k=String(k);
+  var capped=hovOverride.dayoff!=null, F=buildHandoverD(unit,beds,!capped); if(!F||!F.beds||!F.beds[k]) return;
+  var nb=JSON.parse(JSON.stringify(F.beds[k]));
+  if(capped&&hovOverride.dayoff){ var o=hvDayOffset; hvDayOffset=hovOverride.dayoff;   // handover v2 text carries its day offset — match it
+    try{ if(nb.pt)nb.pt=refShiftPtDay(nb.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(nb[f])nb[f]=refShiftText(nb[f]); }); } finally{ hvDayOffset=o; } }
+  var old=hovOverride.beds[k]; if(old&&old.notes)nb.notes=old.notes;
+  hovOverride.beds[k]=nb; saveHov(); }
+function gocPicker(doc,anchor,k,cur,onPick){
+  var old=doc.getElementById('ubgoc'); if(old)old.remove();
+  var box=doc.createElement('div'); box.id='ubgoc';
+  box.style.cssText='position:absolute;z-index:9999;background:#fff;color:#1a2233;border:1px solid #9fb3d1;border-radius:9px;box-shadow:0 8px 24px rgba(0,0,0,.28);padding:9px;width:300px;font:13px -apple-system,Segoe UI,Roboto,Arial,sans-serif';
+  var h='<div style="font-weight:800;margin-bottom:6px">Bed '+esc(k)+' — Goals of care</div><div style="display:grid;grid-template-columns:1fr 1fr;gap:5px">';
+  GOC_PICK.forEach(function(r){ var m=GOC_META[r[0]]||GOC_META['goc-uk'], on=(cur===r[0]||(cur==='goc-full'&&r[0]==='goc-r1'));
+    h+='<button data-c="'+r[0]+'" style="cursor:pointer;text-align:left;padding:6px 7px;border-radius:6px;font:inherit;font-size:12.5px;background:'+m.bg+';color:'+m.fg+';border:'+(on?'2px solid '+m.bar:'1px solid #d3dced')+'"><b>'+r[1]+'</b> '+r[2]+'</button>'; });
+  h+='</div><input id="ubgocn" placeholder="Note (optional) — e.g. SDM wife, confirm at family mtg" style="box-sizing:border-box;width:100%;margin-top:7px;padding:6px 7px;font:inherit;font-size:12.5px;border:1px solid #b9cdf0;border-radius:6px">'
+    +'<div style="display:flex;gap:6px;margin-top:7px"><button data-s="1" style="flex:1;cursor:pointer;padding:6px;border-radius:6px;border:0;background:#1f8a4c;color:#fff;font:inherit;font-weight:700">✓ Save</button>'
+    +'<button data-x="1" style="cursor:pointer;padding:6px 10px;border-radius:6px;border:1px solid #cbd5e6;background:#f4f7fc;font:inherit">✕</button></div>'
+    +'<div style="font-size:11px;color:#667;margin-top:5px">Saved to the bed note — survives updates and the SCM.</div>';
+  box.innerHTML=h; doc.body.appendChild(box);
+  var inp=box.querySelector('#ubgocn'); inp.value=gocNoteOf(k); var sel=cur==='goc-full'?'goc-r1':(cur||'goc-uk');
+  var rc=anchor.getBoundingClientRect(), win=doc.defaultView;
+  box.style.top=(rc.bottom+win.scrollY+4)+'px'; box.style.left=Math.max(4,Math.min(rc.right+win.scrollX-300, win.innerWidth+win.scrollX-308))+'px';
+  var done=function(){ onPick(sel,inp.value.trim()); box.remove(); };
+  box.addEventListener('click',function(e){ var b=e.target.closest('button'); if(!b)return; e.stopPropagation();
+    if(b.dataset.c){ sel=b.dataset.c; done(); } else if(b.dataset.s) done(); else box.remove(); });
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter')done(); if(e.key==='Escape')box.remove(); });
+  setTimeout(function(){ doc.addEventListener('click',function off(e){ if(!box.contains(e.target)){ box.remove(); doc.removeEventListener('click',off); } }); },0);
+}
+function gocHook(f,kind){ try{ var win=f.contentWindow, doc=f.contentDocument; if(!doc)return;
+  if(kind==='hv'){   // handover tool's own click-cycle → picker (same badge, same captureD state)
+    win.gocCycle=function(el){ var card=el.closest('.bed-card'), k=card&&card.dataset.bed; if(!k)return;
+      gocPicker(doc,el,k,el.dataset.state||'goc-uk',function(cls,note){ var txt=setBedGoc(k,cls,note);
+        el.className='goc-badge '+cls; el.dataset.state=cls; el.textContent=(win.GOC_LBL&&win.GOC_LBL[cls])||cls;
+        var gv=card.querySelector('.goc-val'); if(gv)gv.textContent=txt; hovFlash('Bed '+k+' GoC → '+gocRow(cls)[1]); }); };
+    doc.querySelectorAll('.goc-badge').forEach(function(b){ b.title='Click to set GoC'; });
+  } else {
+    doc.querySelectorAll('.ccard[data-bed] .cchip').forEach(function(ch){ ch.addEventListener('click',function(){ var card=ch.closest('.ccard'), k=card.getAttribute('data-bed');
+      gocPicker(doc,ch,k,ch.getAttribute('data-goc')||'goc-uk',function(cls){ setBedGoc(k,cls,arguments[1]); var m=GOC_META[cls]||GOC_META['goc-uk'];
+        ch.setAttribute('data-goc',cls); ch.style.background=m.bg; ch.style.color=m.fg; ch.textContent=m.code+' · '+m.lbl; card.style.borderLeftColor=m.bar;
+        hovFlash('Bed '+k+' GoC → '+m.code); }); }); });
+  } }catch(e){} }
 
 // ---- 🔬 Angela handover: engineer-terse, one concept per line, two-cell status boxes ----
 // Box = [ordered? , result-back?].  ◼◻ ordered/awaiting · ◼◼ ordered+result · ◻◻ not ordered yet.  Toggle via header checkbox.
