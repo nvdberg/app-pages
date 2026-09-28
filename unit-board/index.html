@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.22 · 28-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.23 · 28-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1844,8 +1844,16 @@ function consumeDateBar(){ // the header stepper shown on Handover + Concise
 // Built live from the bed's note (beds[k].d); colleague mini-cards / old saved v2 without d fall back to the pooled Dx/Rx/Pend rows.
 function cShort(s,n){ s=hvClean(s).replace(/^\*\*\s*/,''); if(!n||s.length<=n) return s; var c=s.slice(0,n), sp=c.lastIndexOf(' ');
   if(sp>n*0.55) c=c.slice(0,sp); return c.replace(/[,;:·\s—(\/-]+$/,'')+'…'; }
-function cDoing(l,n){ l=hvClean(l).replace(/^\*\*\s*/,'⚠ '); l=l.split(/\s+[—–]\s+|;\s+|\.\s+/)[0].replace(/[,;]?\s*(titrate\s+(to\s+)?)?\b(MAP|SpO2|sats?|SBP)\b\s*(goal|target)?\s*[≥>]=?.*$/i,'').replace(/\.$/,'');
-  return cBal(cShort(l,n).replace(/…$/,'')); }   // word-boundary cut, no "…" mid-list
+// v2.23: bird's-eye = drug NAMES only — doses/routes/frequency/brackets live in the full note ("Atorvastatin 80 mg PO at bedtime" → "Atorvastatin"). Keeps (?) flags and resp settings (L, %, FiO2).
+function cNoDose(l){ return l.replace(/\s*\((?!\?\))[^()]*\)/g,'')
+  .replace(/\s+[\d.,\/–-]+\s*(mcg\/kg\/min|mcg\/kg\/h|mg\/kg\/h|mg\/kg|mcg\/min|units\/h|units\/kg|mg\/h|mL\/h|micrograms?|mcg|mg|mEq|mmol|mL|units?|g|u|puffs?|inhalations?|tabs?|caps?|amps?|drops?|sprays?)\b(\s*(\/|per)\s*(h|hr|day|kg))?/gi,'')
+  .replace(/\s+\b(PO|IV|IVPB|SC|SQ|subcut|IM|PR|NG|NJ|SL|inh|neb|daily|once daily|BID|TID|QID|q\d+-?\d*h|qhs|qAM|qPM|at bedtime|nightly|PRN|x\s?\d+(\s?doses?)?|with (food|meals?|breakfast|supper|dinner)|via (NG|OG|NJ|G-?tube|J-?tube|PEG|ETT|CVC|PICC|central line))\b/gi,'')
+  .replace(/^(⚠\s*)?\d{1,2} [A-Z][a-z]{2}( \d{1,2}:\d{2})?:\s*/,'$1')
+  .replace(/\s+,/g,',').replace(/\s{2,}/g,' ').trim(); }
+// v2.23: a word-boundary cut must not end on a connector or a bare number ("…once extubated and", "ASA via")
+function cTail(l){ var p; do{ p=l; l=l.replace(/[\s,;:·]+$/,'').replace(/\s+(and|or|on|with|via|to|for|at|in|of|once|until|if|when|the|a|an|per|then|but|from|by|[+&—–-])$/i,''); }while(l!==p); return l; }   // numbers are kept — "Platelets 8", "Cr 137" are the point
+function cDoing(l,n){ l=cNoDose(hvClean(l).replace(/^\*\*\s*/,'⚠ ')); l=l.split(/\s+[—–]\s+|;\s+|\.\s+/)[0].replace(/[,;]?\s*(titrate\s+(to\s+)?)?\b(MAP|SpO2|sats?|SBP)\b\s*(goal|target)?\s*[≥>]=?.*$/i,'').replace(/\.$/,'');
+  return cTail(cBal(cShort(l,n).replace(/…$/,''))); }   // word-boundary cut, no "…" mid-list
 // v2.13: never leave a dangling "(" from a cut ("Levetiracetam 500 mg BID (1 g" → "…BID")
 function cBal(l){ var o=(l.match(/\(/g)||[]).length, c=(l.match(/\)/g)||[]).length; if(o>c) l=l.slice(0,l.lastIndexOf('(')).replace(/[,;:·\s—-]+$/,''); return l; }
 // v2.13: routine-support problems are noise for a first look — hidden from NOW unless they carry a ** safety line (still in Handover / the note)
@@ -1860,13 +1868,15 @@ function cToks(s){ s=hvClean(s).toLowerCase().replace(/hypox\w*/g,'hypox').repla
   return (s.match(/[a-z0-9]{3,}/g)||[]).filter(function(w){return !C_STOP[w];}); }
 var C_URG=/shock|hematoma|haematoma|thrombocytop|dic\b|hypoglyc|hyponat|hypernat|delirium tremens|withdrawal|arrest|resp\w* failure|hypox|ards|intubat|ventilat|airway|bleed|hemorrh|haemorrh|seizure|epilep|hyperkal|acidos|tamponade|stemi|nstemi|stroke|infarct|sepsis|septic|dka|hhs|enceph|coma|arrhythm|brady|tachy|pneumon|aki|renal failure|hypogly|overdose|toxic|embol|pe\b|fasciitis|necrotiz|pancreatit|liver failure|hepatic failure/i;
 var C_CRIT=/shock|arrest|resp\w* failure|hypox\w* resp|ards|ventilat|intubat|airway|bleed|hemorrh|haemorrh|status epilep|hyperkal|tamponade|stemi/i;   // organ-support / immediate life threat, from the headline
-var C_CHRON=/diabet|\bdm\b|t2dm|parkinson|dementia|hypertens|\bhtn\b|anticoag|chronic|home med|hypothyroid|gout|osteo|baseline|other med|dyslipid|\bbph\b|depress|anxiety|smok/i;
+var C_CHRON=/diabet|\bdm\b|t2dm|parkinson|dementia|hypertens|\bhtn\b|anticoag|chronic|home med|hypothyroid|gout|osteo|baseline|other med|dyslipid|\bbph\b|depress|anxiety|smok|\bcad\b|coronary artery|multiple sclerosis|\bosa\b|obesity/i;
+// v2.23: findings that don't say much on their own (a lab/sign, a system label, an incidental) — names line, not a numbered line
+var C_LOWINFO=/^(leu[ck]ocytosis|raised procalcitonin|fever(?!.*(pneumon|sepsis|septic|mening|abscess|cellulit|uti|pyelo))|hypertensive episodes?|hemodynamics|haemodynamics|cvs|cardiovascular|incidental|lung disease)\b/i;
 function cRank(items,d){   // #1 = best token match of the FULL problem name vs subtitle's first clause (admitting dx, 3×) · reason_for_icu (2×) · rest of subtitle (1×); ties → note order
   var uq=function(a){return a.filter(function(w,i){return a.indexOf(w)===i;});};
   var sub=hvClean(d&&d.subtitle), F=uq(cToks(sub.split(/\s[—–]\s|;\s|,\s/)[0])), R=uq(cToks(d&&d.reason_for_icu)), S=uq(cToks(sub)), best=0, bs=0;
   items.forEach(function(it,i){ var sc=0; uq(cToks(it.full)).forEach(function(w){ if(F.indexOf(w)>=0)sc+=3; if(R.indexOf(w)>=0)sc+=2; if(S.indexOf(w)>=0)sc+=1; }); if(sc>bs){bs=sc;best=i;} });
   // then urgency: organ support (headline) → life-threat (full name) → safety-flagged → other active → chronic/background
-  items.forEach(function(it,i){ it.r=(i===best)?0:C_CRIT.test(it.nm)?1:C_URG.test(it.full)?2:it.saf?3:C_CHRON.test(it.nm)?5:4; it.i=i; });
+  items.forEach(function(it,i){ it.r=(i===best)?0:(C_CHRON.test(it.nm)||C_LOWINFO.test(it.nm)||/ — No (antimicrob|antibiot|active|specific)\w*( \w+)?$/i.test(it.line))?5:C_CRIT.test(it.nm)?1:C_URG.test(it.full)?2:it.saf?3:4; it.i=i; });
   return items.sort(function(a,b){return (a.r-b.r)||(a.i-b.i);}); }
 function conciseProbs(d){
   var out=[]; ((d&&d.problems)||[]).forEach(function(p){
@@ -1875,20 +1885,29 @@ function conciseProbs(d){
     var tx=hvLines(p.tx).filter(cTxKeep), pl=hvLines(p.plan).filter(hvPlanKeep);
     var saf=tx.concat(pl).filter(function(l){return /^\s*\*\*/.test(l);});   // safety lines always shown, first
     if(C_ROUTINE.test(nm0)&&!saf.length) return;
-    var nm=cBal(cShort(nm0,48)).replace(/…$/,'');
+    var nm=nm0;   // v2.23: problem names always WHOLE — never cut or abbreviated (physician request)
     var doing=saf.slice(0,1).map(function(l){return cDoing(l,48);});
     tx.filter(function(l){return saf.indexOf(l)<0;}).slice(0,Math.max(0,2-doing.length)).forEach(function(l){doing.push(cDoing(l,36));});
     var nxt=pl.filter(function(l){return saf.indexOf(l)<0&&!hvAdmin(l);})[0];
     var line=nm+(doing.length?' — '+doing.join(', '):'')+(nxt?' → '+cDoing(nxt,40):'');
     out.push({nm:nm0,full:hvClean(p.name),saf:saf.length>0,line:refShiftText(line)});
   });
-  return cRank(out,d).map(function(x){return x.line;}); }
+  // v2.23: at most 4 full lines; chronic/background (tier 5) and anything past #4 → one un-numbered names line "+N: a · b · c"
+  var rk=cRank(out,d), top=[], more=[];
+  rk.forEach(function(x){ if(x.r<5&&top.length<4) top.push(x.line); else more.push(cShortName(x.nm)+(x.saf?' ⚠':'')); });
+  return top.concat(more.length?['+'+more.length+': '+more.join(' · ')]:[]); }
+function cShortName(n){ return hvClean(n).replace(/\s*\([^()]*\)/g,'').trim(); }   // whole name (brackets only dropped)
 function conciseHx(d){ return hvLines(d&&d.pmhx).slice(0,3).map(function(l){return cShort(l.replace(/\s*[—–(].*$/,''),30);}).filter(Boolean).join(' · '); }
 function conciseNext(d){ var a=[]; var dp=((d&&d.problems)||[]).filter(function(p){return p&&p.type==='dispo';})[0];
-  if(dp&&dp.dispo_summary&&!hvAdmin(dp.dispo_summary)) a.push(cShort(dp.dispo_summary,60));
-  ((d&&d.tasks)||[]).forEach(function(t){ if(t&&t.text&&!hvAdmin(t.text)&&(t.kind==='watch'||t.kind==='pending')&&a.length<3) a.push((t.kind==='watch'?'⚠ ':'')+cShort(t.text,40)); });
+  // v2.23: max 2 items, near-duplicates dropped (dispo "To GIM ward — bed pending" ≈ task "GIM ward transfer — bed pending"), no brackets/trailing "."
+  var seen=[], tk=function(x){return (hvClean(x).toLowerCase().match(/[a-z0-9]{3,}/g)||[]);};
+  var add=function(txt,pre,n){ if(a.length>=2)return; var t=tk(txt); if(!t.length)return;
+    if(seen.some(function(S){ return t.filter(function(w){return S.indexOf(w)>=0;}).length>=Math.ceil(t.length*0.5); }))return;
+    seen.push(t); a.push(pre+cTail(cBal(cShort(cNoDose(hvClean(txt)).split(/;\s+/)[0].replace(/\.\s*$/,''),n)).replace(/…$/,''))); };
+  if(dp&&dp.dispo_summary&&!hvAdmin(dp.dispo_summary)) add(dp.dispo_summary,'',50);
+  ((d&&d.tasks)||[]).forEach(function(t){ if(t&&t.text&&!hvAdmin(t.text)&&(t.kind==='watch'||t.kind==='pending')) add(t.text,t.kind==='watch'?'⚠ ':'',40); });
   return refShiftText(a.join(' · ')); }
-function cProbHTML(lines){ return lines.map(function(l){ var i=l.indexOf(' — '), j=l.indexOf(' → '); var cut=(i<0)?j:(j<0?i:Math.min(i,j));
+function cProbHTML(lines){ return lines.map(function(l){ if(/^\+\d+:/.test(l)) return '<div class="cp cmore">'+esc(l)+'</div>'; var i=l.indexOf(' — '), j=l.indexOf(' → '); var cut=(i<0)?j:(j<0?i:Math.min(i,j));
   return '<div class="cp">'+(cut<0?'<b>'+esc(l)+'</b>':'<b>'+esc(l.slice(0,cut))+'</b>'+esc(l.slice(cut)))+'</div>'; }).join(''); }
 function conciseCards(D){
   // ALL beds, positional (bed-number) order — empty beds keep their place as light placeholders.
@@ -1952,7 +1971,7 @@ function buildConciseHTML(D){
     +'.cv{flex:1;color:#1a2233}'
     +'.cv[contenteditable]:empty:before{content:"—";color:#cfd6e0}'
     +'.cv[contenteditable]:focus,.narea:focus{background:#eef4ff;outline:1px solid #b9cdf0;border-radius:3px}'
-    +'.cprobs{counter-reset:cp}.cprobs .cp{padding-left:14px;text-indent:-14px}.cprobs .cp:before{counter-increment:cp;content:counter(cp) ". ";color:#8a97a8;font-weight:700;display:inline-block;width:14px;text-indent:0}.cprobs b{font-weight:700;color:#12213f}'
+    +'.cprobs{counter-reset:cp}.cprobs .cp{padding-left:14px;text-indent:-14px}.cprobs .cp:before{counter-increment:cp;content:counter(cp) ". ";color:#8a97a8;font-weight:700;display:inline-block;width:14px;text-indent:0}.cprobs b{font-weight:700;color:#12213f}.cprobs .cp.cmore{color:#5b6b80}.cprobs .cp.cmore:before{content:"";counter-increment:none}'
     +'.cflags{margin-top:4px}'
     +'.cflag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-right:3px;display:inline-block}'
     +'.alert-tag{background:#fde3cf;color:#a5480a;border:1px solid #e8a06a}'
