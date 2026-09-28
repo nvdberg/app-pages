@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.18 · 27-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.19 · 27-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1858,7 +1858,7 @@ function cResolved(p){ return !!(p&&p.badge&&/^\s*resolved/i.test(p.badge.text||
 var C_STOP={acute:1,with:1,and:1,the:1,after:1,from:1,post:1,secondary:1,suspected:1,possible:1,likely:1,new:1,left:1,right:1,lobe:1,due:1,status:1,onset:1,for:1,per:1,probable:1,severe:1};
 function cToks(s){ s=hvClean(s).toLowerCase().replace(/hypox\w*/g,'hypox').replace(/respirat\w*|\bresp\b/g,'resp').replace(/septic|sepsis/g,'sepsis').replace(/pneumon\w*/g,'pneumonia').replace(/haem/g,'hem').replace(/encephalopath\w*/g,'enceph');
   return (s.match(/[a-z0-9]{3,}/g)||[]).filter(function(w){return !C_STOP[w];}); }
-var C_URG=/shock|arrest|resp\w* failure|hypox|ards|intubat|ventilat|airway|bleed|hemorrh|haemorrh|seizure|epilep|hyperkal|acidos|tamponade|stemi|nstemi|stroke|infarct|sepsis|septic|dka|hhs|enceph|coma|arrhythm|brady|tachy|pneumon|aki|renal failure|hypogly|overdose|toxic|embol|pe\b|fasciitis|necrotiz|pancreatit|liver failure|hepatic failure/i;
+var C_URG=/shock|hematoma|haematoma|thrombocytop|dic\b|hypoglyc|hyponat|hypernat|delirium tremens|withdrawal|arrest|resp\w* failure|hypox|ards|intubat|ventilat|airway|bleed|hemorrh|haemorrh|seizure|epilep|hyperkal|acidos|tamponade|stemi|nstemi|stroke|infarct|sepsis|septic|dka|hhs|enceph|coma|arrhythm|brady|tachy|pneumon|aki|renal failure|hypogly|overdose|toxic|embol|pe\b|fasciitis|necrotiz|pancreatit|liver failure|hepatic failure/i;
 var C_CRIT=/shock|arrest|resp\w* failure|hypox\w* resp|ards|ventilat|intubat|airway|bleed|hemorrh|haemorrh|status epilep|hyperkal|tamponade|stemi/i;   // organ-support / immediate life threat, from the headline
 var C_CHRON=/diabet|\bdm\b|t2dm|parkinson|dementia|hypertens|\bhtn\b|anticoag|chronic|home med|hypothyroid|gout|osteo|baseline|other med|dyslipid|\bbph\b|depress|anxiety|smok/i;
 function cRank(items,d){   // #1 = best token match of the FULL problem name vs subtitle's first clause (admitting dx, 3×) · reason_for_icu (2×) · rest of subtitle (1×); ties → note order
