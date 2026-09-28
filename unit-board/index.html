@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.12 · 27-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.13 · 27-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1837,16 +1837,22 @@ function consumeDateBar(){ // the header stepper shown on Handover + Concise
 function cShort(s,n){ s=hvClean(s).replace(/^\*\*\s*/,''); if(!n||s.length<=n) return s; var c=s.slice(0,n), sp=c.lastIndexOf(' ');
   if(sp>n*0.55) c=c.slice(0,sp); return c.replace(/[,;:·\s—(\/-]+$/,'')+'…'; }
 function cDoing(l,n){ l=hvClean(l).replace(/^\*\*\s*/,'⚠ '); l=l.split(/\s+[—–]\s+|;\s+|\.\s+/)[0].replace(/[,;]?\s*(titrate\s+(to\s+)?)?\b(MAP|SpO2|sats?|SBP)\b\s*(goal|target)?\s*[≥>]=?.*$/i,'').replace(/\.$/,'');
-  return cShort(l,n).replace(/…$/,''); }   // word-boundary cut, no "…" mid-list
+  return cBal(cShort(l,n).replace(/…$/,'')); }   // word-boundary cut, no "…" mid-list
+// v2.13: never leave a dangling "(" from a cut ("Levetiracetam 500 mg BID (1 g" → "…BID")
+function cBal(l){ var o=(l.match(/\(/g)||[]).length, c=(l.match(/\)/g)||[]).length; if(o>c) l=l.slice(0,l.lastIndexOf('(')).replace(/[,;:·\s—-]+$/,''); return l; }
+// v2.13: routine-support problems are noise for a first look — hidden from NOW unless they carry a ** safety line (still in Handover / the note)
+var C_ROUTINE=/^(prophyla|nutrition|feeds?|bowel|other med|home med|chronic med|lines?\b|access|skin|electrolyte|sedation|analgesi|glyc|endocrine\b|pain\b)/i;
 // concise tx filter: same as handover's, but a MAP/SpO2 target riding on an active drug line (e.g. "Norepi … titrate MAP ≥65") must NOT drop the drug
 function cTxKeep(l){ var core=hvClean(l).replace(/[,;]?\s*(titrate\s+(to\s+)?)?\b(MAP|SpO2|sats?|SBP)\b\s*(goal|target)?\s*[≥>]=?.*$/i,'').trim(); return !!core&&hvTxKeep(core); }
 function cResolved(p){ return !!(p&&p.badge&&/^\s*resolved/i.test(p.badge.text||'')); }
 function conciseProbs(d){
   var out=[]; ((d&&d.problems)||[]).forEach(function(p){
     if(!p||!p.name||p.type==='goc'||p.type==='dispo'||cResolved(p)) return;
-    var nm=cShort(hvClean(p.name).replace(/\s*[—–]\s.*$/,''),48);
+    var nm0=hvClean(p.name).replace(/\s*[—–]\s.*$/,'');
     var tx=hvLines(p.tx).filter(cTxKeep), pl=hvLines(p.plan).filter(hvPlanKeep);
     var saf=tx.concat(pl).filter(function(l){return /^\s*\*\*/.test(l);});   // safety lines always shown, first
+    if(C_ROUTINE.test(nm0)&&!saf.length) return;
+    var nm=cBal(cShort(nm0,48)).replace(/…$/,'');
     var doing=saf.slice(0,1).map(function(l){return cDoing(l,48);});
     tx.filter(function(l){return saf.indexOf(l)<0;}).slice(0,Math.max(0,2-doing.length)).forEach(function(l){doing.push(cDoing(l,36));});
     var nxt=pl.filter(function(l){return saf.indexOf(l)<0;})[0];
