@@ -108,7 +108,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.09 · 27-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.10 · 27-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1416,6 +1416,13 @@ function mergePatch(p,opt){ opt=opt||{};
     (ps.items||[]).forEach(function(it){ var e=(s.items||[]).filter(function(x){return _mn(x.l)===_mn(it.l);})[0]; if(e){e.v=it.v; if(it.f!=null)e.f=it.f;} else (s.items=s.items||[]).push(_mj(it)); }); }); });
   // 4 · interval events → hospital course · new consults/tests → pending tasks
   (p.events||[]).forEach(function(e){ [d,g].forEach(function(t){ t.hospital_course=_ml(t.hospital_course); if(!_mhas(t.hospital_course,e))t.hospital_course.push(e); }); });
+  // 4b · results / consults (v2.09): investigations_add / _stop, consults_add / _stop — checklist sections, 🆕 marked; pending_done ticks the matching pending task
+  [['investigations','inv'],['consults','cons']].forEach(function(sec){ var ad=p[sec[0]+'_add']||[], sp=p[sec[0]+'_stop']||[]; if(!ad.length&&!sp.length)return;
+    var mine=_ml(d[sec[0]]), gl=_ml(g[sec[0]]);
+    sp.forEach(function(x){ mine.filter(function(l){return mStopHit(l,x);}).forEach(function(l){ mine=mine.filter(function(y){return y!==l;}); mBucket(stp,'__'+sec[1],'tx').push(l); cnt.stop++; }); gl=gl.filter(function(l){return !mStopHit(l,x);}); });
+    ad.forEach(function(l){ l=String(l).trim(); if(!l)return; if(!_mhas(gl,l))gl.push(l); if(_mhas(mine,l))return; mine.push(l); mBucket(nw,'__'+sec[1],'tx').push(l); cnt.add++; });
+    d[sec[0]]=mine; g[sec[0]]=gl; });
+  (p.pending_done||[]).forEach(function(e){ (d.tasks||[]).forEach(function(t,ti){ if(t&&t.kind==='pending'&&(mStopHit(t.text,e)||mStopHit(e,t.text))){ w.taskDone=w.taskDone||[]; if(w.taskDone.indexOf(ti)<0){w.taskDone.push(ti); cnt.add++;} } }); });
   (p.pending_add||[]).forEach(function(e){ [d,g].forEach(function(t){ t.tasks=t.tasks||[]; if(!t.tasks.some(function(x){return _mn(x.text)===_mn(e);}))t.tasks.push({text:e,kind:'pending'}); }); });
   if(p._meta){ d._meta=p._meta; }
   delete d.handover; if(p.handover_line==null&&(cnt.add||cnt.stop||cnt.np))delete d.handover_line;   // data moved → stale handover card re-derives
@@ -1448,6 +1455,9 @@ function mergeInject(f,n){
       [].forEach.call(wrap.querySelectorAll('.chk-row'),function(r){ var t=r.querySelector('textarea'); if(t&&_mhas(nwL,t.value))r.classList.add('ubm-new'); });
       [['_mrep','ubm-rep'],['_mstop','ubm-stop']].forEach(function(m){ (((w[m[0]]||{})[k]||{})[f2[0]]||[]).forEach(function(l){ var r=win.mkChkRow(l,false); r.classList.add(m[1]); wrap.insertBefore(r,add||null); }); }); });
     var ok='ctx:'+k; if(w._moffer&&w._moffer[ok]!=null) mOfferChip(doc,n,ok,doc.getElementById(pid+'context')); });
+  [['investigations_list','__inv'],['consults_list','__cons']].forEach(function(s2){ var wrap=doc.getElementById(s2[0]); if(!wrap)return; var add=wrap.querySelector('.chk-add'), nwL=((w._mnew||{})[s2[1]]||{}).tx||[];
+    [].forEach.call(wrap.querySelectorAll('.chk-row'),function(r){ var t=r.querySelector('textarea'); if(t&&_mhas(nwL,t.value))r.classList.add('ubm-new'); });
+    (((w._mstop||{})[s2[1]]||{}).tx||[]).forEach(function(l){ var r=win.mkChkRow(l,false); r.classList.add('ubm-stop'); wrap.insertBefore(r,add||null); }); });
   Object.keys(w._moffer||{}).forEach(function(key){ if(MOFF_ID[key]) mOfferChip(doc,n,key,doc.getElementById(MOFF_ID[key])); });
 }
 function mOfferChip(doc,n,key,el){ if(!el)return; var v=beds[n]._moffer[key];
