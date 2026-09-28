@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.24 · 28-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.25 · 28-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1756,9 +1756,7 @@ function renderHandover(view){
   var hvZ=hvOpts.font||1, hvPg=297-2*hvOpts.margin-1, hvFit=Math.floor((hvPg-18)/4), hvRow=Math.min(hvOpts.rowmm,hvFit/hvZ);
   var over='<style>.unit-btns{display:none!important}body{zoom:'+hvZ+'}'
     +'@page{size:A4 portrait;margin:'+hvOpts.margin+'mm 3mm}'
-    +'@media screen{.bed-card,.notes-cell-content{min-height:'+hvRow+'mm!important;height:auto!important;max-height:none!important}'   /* v2.24: screen cards GROW — fixed height let long TX spill over the card border into the notes */
-    +'.bed-card.hv-over{outline:2px dashed #e5534b;outline-offset:-2px}.hv-overtag{position:absolute;right:8px;bottom:4px;font:600 11px system-ui;color:#fff;background:#c93c37;border-radius:4px;padding:1px 6px}}'
-    +'@media print{.hv-overtag{display:none}}'
+    +'@media screen{.bed-card,.notes-cell-content{min-height:'+hvRow+'mm!important;height:auto!important;max-height:none!important}}'   /* v2.24: screen cards GROW — fixed height let long TX spill over the card border into the notes; print keeps the fixed row */
     +'@media print{.page-wrap{height:'+(hvPg/hvZ)+'mm!important;overflow:hidden}'
     +'.bed-cell,.notes-cell{height:'+hvRow+'mm!important}'
     +'.bed-cell>.bed-card,.notes-cell>.notes-cell-content,.bed-card.empty-card{height:'+hvRow+'mm!important;max-height:'+hvRow+'mm!important}'   /* match the tool\'s selector specificity — plain .bed-card lost, so Row mm never applied in print */
@@ -1769,7 +1767,7 @@ function renderHandover(view){
   var Dh=hvDayOffset ? (function(){ var c=JSON.parse(JSON.stringify(D)); Object.keys(c.beds).forEach(function(k){ var b=c.beds[k]; if(b&&!b.empty){ if(b.pt)b.pt=refShiftPtDay(b.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(b[f])b[f]=refShiftText(b[f]); }); } }); return c; })() : D;
   hvDayOffset=hvOff0;
   var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(Dh)+';');
-  f.addEventListener('load',function(){ gocHook(f,'hv'); hvOverMark(f,hvRow); });
+  f.addEventListener('load',function(){ gocHook(f,'hv'); });
   f.srcdoc=html; host.appendChild(f);
 }
 function hvAdj(k,delta){
@@ -2092,10 +2090,6 @@ function gocPicker(doc,anchor,k,cur,onPick){
   inp.addEventListener('keydown',function(e){ if(e.key==='Enter')done(); if(e.key==='Escape')box.remove(); });
   setTimeout(function(){ doc.addEventListener('click',function off(e){ if(!box.contains(e.target)){ box.remove(); doc.removeEventListener('click',off); } }); },0);
 }
-// v2.24: flag cards taller than the print row — print clips them (never shrink the font; trim or raise Row instead)
-function hvOverMark(f,rowmm){ try{ var doc=f.contentDocument; if(!doc)return; var pr=doc.createElement('div'); pr.style.cssText='position:absolute;visibility:hidden;height:'+rowmm+'mm'; doc.body.appendChild(pr); var lim=pr.getBoundingClientRect().height; pr.remove();
-  doc.querySelectorAll('.bed-card[data-bed]').forEach(function(c){ var h=c.getBoundingClientRect().height; if(h>lim+4){ c.classList.add('hv-over'); if(getComputedStyle(c).position==='static')c.style.position='relative';
-    var t=doc.createElement('span'); t.className='hv-overtag'; t.textContent='✂ print cuts ~'+Math.round((h-lim)/h*100)+'% — trim or Row +'; c.appendChild(t); } }); }catch(e){} }
 function gocHook(f,kind){ try{ var win=f.contentWindow, doc=f.contentDocument; if(!doc)return;
   if(kind==='hv'){   // handover tool's own click-cycle → picker (same badge, same captureD state)
     win.gocCycle=function(el){ var card=el.closest('.bed-card'), k=card&&card.dataset.bed; if(!k)return;
