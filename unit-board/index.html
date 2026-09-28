@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.13 · 27-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.14 · 27-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -547,6 +547,14 @@ function hvTxKeep(l){
     return /\b(due to|because|secondary to|do ?not|don'?t|avoid|hold|allerg|\bhit\b|reaction|hypersensitiv|contraindicat|bleed|overdose|toxic)/i.test(l);
   return true;
 }
+// v2.14 (feedback 27-Sep): admin/charting reminders for the physician ("Confirm SMOST form on chart", "confirm PS setting — flowsheet")
+// are NOT handover content — dropped from Handover + Concise unless flagged ** (safety). Filler dispo ("Continue MICU care.") likewise.
+function hvAdmin(l){ l=hvClean(l); if(!l||/^\*\*/.test(l)) return false;
+  if(/^(continue|remains?)\s+(in\s+)?(the\s+)?(p?icu|micu|sicu|ccu|csu)(\s+care)?\.?$/i.test(l)) return true;
+  var paper=/\b(chart(ed)?|form|flowsheet|paperwork|documentation|document(ed)?|order ?set|MAR|co-?sign|signed|dictat\w*|billing|requisition)\b/i;
+  var verb=/\b(confirm|check|verify|ensure|complete|update|document|sign|fill|reconcile|dictate|file)\b/i;
+  return paper.test(l)&&verb.test(l); }
+function hvPlanStr(s){ return hvClean(s).split(' · ').filter(function(x){return x&&!hvAdmin(x);}).join(' · '); }
 function hvPlanKeep(l){
   if(/^\*\*/.test(l)) return true;                                             // safety flag
   if(/^\s*(continue|cont\.|monitor|observe|reassess|ongoing|routine|maintain|keep )\b/i.test(l)) return false;
@@ -650,7 +658,7 @@ function bedToHandover(d, overnight, uncap){
   var planAll=[]; active.forEach(function(p){ hvLines(p.plan).filter(hvPlanKeep).forEach(function(l){planAll.push(l);}); });
   (d.tasks||[]).forEach(function(t){ if(t&&t.kind==='new')planAll.push(hvClean(t.text)); else if(t&&t.kind==='stop')planAll.push('Stop '+hvClean(t.text)); });
   if(dispo&&dispo.dispo_summary) planAll.push(hvClean(dispo.dispo_summary));
-  var plan=hvJoin(hvPrioritize(planAll), ' · ', CAP.plan);
+  var plan=hvJoin(hvPrioritize(planAll.filter(function(l){return !hvAdmin(l);})), ' · ', CAP.plan);
 
   var gocClass=hvGocClass(goc&&goc.goc_status);
   var gocStat=hvClean(goc&&goc.goc_status).toUpperCase();
@@ -706,7 +714,7 @@ function normHvCard(c, overnight){
   var ovn=hvClean(overnight||c.overnight);
   var bed={ pt:hvClean(c.pt), goc:c.goc||'goc-uk', alert:!!c.alert, tags:(c.tags||[]).slice(0,3), reason:hvClean(c.reason_for_icu),
     admit:hvClean(c.admit), event:hvClean(c.event), overnight:ovn, dx:hvClean(c.dx),
-    pmhx:hvClean(c.pmhx), tx:hvClean(c.tx), goc_text:hvClean(c.goc_text), plan:hvClean(c.plan) };
+    pmhx:hvClean(c.pmhx), tx:hvClean(c.tx), goc_text:hvClean(c.goc_text), plan:hvPlanStr(c.plan) };
   if(ovn) bed._ovn_show=true;
   return bed;
 }
@@ -736,7 +744,7 @@ function authoredCard(d, overnight, uncap){
     pmhx: hvCap(h.pmhx, CAP.pmhx),
     tx: hvCap(h.tx, CAP.tx),
     goc_text: hvCap(h.goc_text || (goc?((goc.goc_status||'')+(goc.goc_note?' — '+goc.goc_note:'')):''), CAP.goc_text),
-    plan: hvCap(h.plan, CAP.plan) };
+    plan: hvCap(hvPlanStr(h.plan), CAP.plan) };
   if(ovn) bed._ovn_show=true;
   return bed;
 }
@@ -1855,15 +1863,15 @@ function conciseProbs(d){
     var nm=cBal(cShort(nm0,48)).replace(/…$/,'');
     var doing=saf.slice(0,1).map(function(l){return cDoing(l,48);});
     tx.filter(function(l){return saf.indexOf(l)<0;}).slice(0,Math.max(0,2-doing.length)).forEach(function(l){doing.push(cDoing(l,36));});
-    var nxt=pl.filter(function(l){return saf.indexOf(l)<0;})[0];
+    var nxt=pl.filter(function(l){return saf.indexOf(l)<0&&!hvAdmin(l);})[0];
     var line=nm+(doing.length?' — '+doing.join(', '):'')+(nxt?' → '+cDoing(nxt,40):'');
     out.push(refShiftText(line));
   });
   return out; }
 function conciseHx(d){ return hvLines(d&&d.pmhx).slice(0,3).map(function(l){return cShort(l.replace(/\s*[—–(].*$/,''),30);}).filter(Boolean).join(' · '); }
 function conciseNext(d){ var a=[]; var dp=((d&&d.problems)||[]).filter(function(p){return p&&p.type==='dispo';})[0];
-  if(dp&&dp.dispo_summary) a.push(cShort(dp.dispo_summary,60));
-  ((d&&d.tasks)||[]).forEach(function(t){ if(t&&t.text&&(t.kind==='watch'||t.kind==='pending')&&a.length<3) a.push((t.kind==='watch'?'⚠ ':'')+cShort(t.text,40)); });
+  if(dp&&dp.dispo_summary&&!hvAdmin(dp.dispo_summary)) a.push(cShort(dp.dispo_summary,60));
+  ((d&&d.tasks)||[]).forEach(function(t){ if(t&&t.text&&!hvAdmin(t.text)&&(t.kind==='watch'||t.kind==='pending')&&a.length<3) a.push((t.kind==='watch'?'⚠ ':'')+cShort(t.text,40)); });
   return refShiftText(a.join(' · ')); }
 function cProbHTML(lines){ return lines.map(function(l){ var i=l.indexOf(' — '), j=l.indexOf(' → '); var cut=(i<0)?j:(j<0?i:Math.min(i,j));
   return '<div class="cp">'+(cut<0?'<b>'+esc(l)+'</b>':'<b>'+esc(l.slice(0,cut))+'</b>'+esc(l.slice(cut)))+'</div>'; }).join(''); }
