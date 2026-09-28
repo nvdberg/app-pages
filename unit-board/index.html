@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.23 · 28-Sep-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.24 · 28-Sep-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1756,7 +1756,9 @@ function renderHandover(view){
   var hvZ=hvOpts.font||1, hvPg=297-2*hvOpts.margin-1, hvFit=Math.floor((hvPg-18)/4), hvRow=Math.min(hvOpts.rowmm,hvFit/hvZ);
   var over='<style>.unit-btns{display:none!important}body{zoom:'+hvZ+'}'
     +'@page{size:A4 portrait;margin:'+hvOpts.margin+'mm 3mm}'
-    +'.bed-card,.notes-cell-content{height:'+hvRow+'mm!important;max-height:'+hvRow+'mm!important}'
+    +'@media screen{.bed-card,.notes-cell-content{min-height:'+hvRow+'mm!important;height:auto!important;max-height:none!important}'   /* v2.24: screen cards GROW — fixed height let long TX spill over the card border into the notes */
+    +'.bed-card.hv-over{outline:2px dashed #e5534b;outline-offset:-2px}.hv-overtag{position:absolute;right:8px;bottom:4px;font:600 11px system-ui;color:#fff;background:#c93c37;border-radius:4px;padding:1px 6px}}'
+    +'@media print{.hv-overtag{display:none}}'
     +'@media print{.page-wrap{height:'+(hvPg/hvZ)+'mm!important;overflow:hidden}'
     +'.bed-cell,.notes-cell{height:'+hvRow+'mm!important}'
     +'.bed-cell>.bed-card,.notes-cell>.notes-cell-content,.bed-card.empty-card{height:'+hvRow+'mm!important;max-height:'+hvRow+'mm!important}'   /* match the tool\'s selector specificity — plain .bed-card lost, so Row mm never applied in print */
@@ -1767,7 +1769,7 @@ function renderHandover(view){
   var Dh=hvDayOffset ? (function(){ var c=JSON.parse(JSON.stringify(D)); Object.keys(c.beds).forEach(function(k){ var b=c.beds[k]; if(b&&!b.empty){ if(b.pt)b.pt=refShiftPtDay(b.pt); ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(b[f])b[f]=refShiftText(b[f]); }); } }); return c; })() : D;
   hvDayOffset=hvOff0;
   var html=handoverToolHTML().replace('</head>',over).replace('var D = null;','var D = '+JSON.stringify(Dh)+';');
-  f.addEventListener('load',function(){ gocHook(f,'hv'); });
+  f.addEventListener('load',function(){ gocHook(f,'hv'); hvOverMark(f,hvRow); });
   f.srcdoc=html; host.appendChild(f);
 }
 function hvAdj(k,delta){
@@ -1878,6 +1880,16 @@ function cRank(items,d){   // #1 = best token match of the FULL problem name vs 
   // then urgency: organ support (headline) → life-threat (full name) → safety-flagged → other active → chronic/background
   items.forEach(function(it,i){ it.r=(i===best)?0:(C_CHRON.test(it.nm)||C_LOWINFO.test(it.nm)||/ — No (antimicrob|antibiot|active|specific)\w*( \w+)?$/i.test(it.line))?5:C_CRIT.test(it.nm)?1:C_URG.test(it.full)?2:it.saf?3:4; it.i=i; });
   return items.sort(function(a,b){return (a.r-b.r)||(a.i-b.i);}); }
+// v2.24: Concise lifts fragments out of the note, so a first-use expansion elsewhere is invisible — expand
+// Principle-7 niche abbreviations on their FIRST appearance per card ("intermittent hemodialysis (IHD)"), bare after
+var C_ABBR={AHRF:'acute hypoxemic respiratory failure',CRRT:'continuous renal replacement therapy',IHD:'intermittent hemodialysis',
+  TTE:'transthoracic echo',TEE:'transesophageal echo',PEG:'percutaneous gastrostomy',DAPT:'dual antiplatelet therapy',BAL:'bronchoalveolar lavage',
+  STSG:'split-thickness skin graft',BKA:'below-knee amputation',AKA:'above-knee amputation',ORIF:'open reduction internal fixation',
+  IMN:'intramedullary nail',VAC:'negative-pressure wound dressing',EBL:'estimated blood loss',CPFE:'combined pulmonary fibrosis and emphysema',
+  NGTD:'no growth to date',NYD:'not yet diagnosed',FCD:'fecal containment device',
+  PLEX:'plasma exchange'};
+function cExpand(l,seen){ return String(l).replace(/\b(R |L )?([A-Z]{3,5})\b(?!\))/g,function(m,side,ab,o){
+  if(!C_ABBR[ab]||seen[ab]) return m; seen[ab]=1; var x=(side?(side==='R '?'right ':'left '):'')+C_ABBR[ab]+' ('+(side||'')+ab+')'; return o===0?x[0].toUpperCase()+x.slice(1):x; }); }
 function conciseProbs(d){
   var out=[]; ((d&&d.problems)||[]).forEach(function(p){
     if(!p||!p.name||p.type==='goc'||p.type==='dispo'||cResolved(p)) return;
@@ -1895,7 +1907,7 @@ function conciseProbs(d){
   // v2.23: at most 4 full lines; chronic/background (tier 5) and anything past #4 → one un-numbered names line "+N: a · b · c"
   var rk=cRank(out,d), top=[], more=[];
   rk.forEach(function(x){ if(x.r<5&&top.length<4) top.push(x.line); else more.push(cShortName(x.nm)+(x.saf?' ⚠':'')); });
-  return top.concat(more.length?['+'+more.length+': '+more.join(' · ')]:[]); }
+  var sn={}; return top.concat(more.length?['+'+more.length+': '+more.join(' · ')]:[]).map(function(l){return cExpand(l,sn);}); }
 function cShortName(n){ return hvClean(n).replace(/\s*\([^()]*\)/g,'').trim(); }   // whole name (brackets only dropped)
 function conciseHx(d){ return hvLines(d&&d.pmhx).slice(0,3).map(function(l){return cShort(l.replace(/\s*[—–(].*$/,''),30);}).filter(Boolean).join(' · '); }
 function conciseNext(d){ var a=[]; var dp=((d&&d.problems)||[]).filter(function(p){return p&&p.type==='dispo';})[0];
@@ -1906,7 +1918,7 @@ function conciseNext(d){ var a=[]; var dp=((d&&d.problems)||[]).filter(function(
     seen.push(t); a.push(pre+cTail(cBal(cShort(cNoDose(hvClean(txt)).split(/;\s+/)[0].replace(/\.\s*$/,''),n)).replace(/…$/,''))); };
   if(dp&&dp.dispo_summary&&!hvAdmin(dp.dispo_summary)) add(dp.dispo_summary,'',50);
   ((d&&d.tasks)||[]).forEach(function(t){ if(t&&t.text&&!hvAdmin(t.text)&&(t.kind==='watch'||t.kind==='pending')) add(t.text,t.kind==='watch'?'⚠ ':'',40); });
-  return refShiftText(a.join(' · ')); }
+  return refShiftText(cExpand(a.join(' · '),{})); }
 function cProbHTML(lines){ return lines.map(function(l){ if(/^\+\d+:/.test(l)) return '<div class="cp cmore">'+esc(l)+'</div>'; var i=l.indexOf(' — '), j=l.indexOf(' → '); var cut=(i<0)?j:(j<0?i:Math.min(i,j));
   return '<div class="cp">'+(cut<0?'<b>'+esc(l)+'</b>':'<b>'+esc(l.slice(0,cut))+'</b>'+esc(l.slice(cut)))+'</div>'; }).join(''); }
 function conciseCards(D){
@@ -2080,6 +2092,10 @@ function gocPicker(doc,anchor,k,cur,onPick){
   inp.addEventListener('keydown',function(e){ if(e.key==='Enter')done(); if(e.key==='Escape')box.remove(); });
   setTimeout(function(){ doc.addEventListener('click',function off(e){ if(!box.contains(e.target)){ box.remove(); doc.removeEventListener('click',off); } }); },0);
 }
+// v2.24: flag cards taller than the print row — print clips them (never shrink the font; trim or raise Row instead)
+function hvOverMark(f,rowmm){ try{ var doc=f.contentDocument; if(!doc)return; var pr=doc.createElement('div'); pr.style.cssText='position:absolute;visibility:hidden;height:'+rowmm+'mm'; doc.body.appendChild(pr); var lim=pr.getBoundingClientRect().height; pr.remove();
+  doc.querySelectorAll('.bed-card[data-bed]').forEach(function(c){ var h=c.getBoundingClientRect().height; if(h>lim+4){ c.classList.add('hv-over'); if(getComputedStyle(c).position==='static')c.style.position='relative';
+    var t=doc.createElement('span'); t.className='hv-overtag'; t.textContent='✂ print cuts ~'+Math.round((h-lim)/h*100)+'% — trim or Row +'; c.appendChild(t); } }); }catch(e){} }
 function gocHook(f,kind){ try{ var win=f.contentWindow, doc=f.contentDocument; if(!doc)return;
   if(kind==='hv'){   // handover tool's own click-cycle → picker (same badge, same captureD state)
     win.gocCycle=function(el){ var card=el.closest('.bed-card'), k=card&&card.dataset.bed; if(!k)return;
