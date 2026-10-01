@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.28 · 01-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.29 · 01-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -877,7 +877,7 @@ function renderHistList(map){
   var body=document.getElementById('histbody'); if(!body)return;
   var items=Object.keys(map).map(function(k){return map[k];})
     .sort(function(a,b){ if(a.iso!==b.iso)return a.iso<b.iso?1:-1; return a.unit<b.unit?-1:1; });
-  if(!items.length){ body.innerHTML='<div style="padding:24px;text-align:center;color:#889">No entries yet. As you chart beds, each unit + date shows up here.</div>'; return; }
+  if(!items.length){ body.innerHTML='<div style="padding:24px;text-align:center;color:#889">No entries yet. As you chart beds, each unit + date shows up here.</div>'+histArchHTML(); return; }
   var todayIso=isoToday(), rows='', lastDate='';
   items.forEach(function(it){
     if(it.date!==lastDate){ rows+='<div class="hdate">'+esc(it.date)+(it.iso===todayIso?' · today':'')+'</div>'; lastDate=it.date; }
@@ -887,15 +887,39 @@ function renderHistList(map){
     rows+='<div class="hrow" onclick="gotoUnitDate(\''+it.unit+'\',\''+it.iso+'\')">'
       +'<span class="hunit">'+esc(it.unit)+'</span><span class="hmeta">'+esc(meta)+'</span><span class="hgo">↦</span></div>';
   });
-  body.innerHTML=rows;
+  body.innerHTML=rows+histArchHTML();
 }
+// v2.29: transferred / removed patients — archiveBed() has always saved them (unitboard_hist_<unit>, this browser only) but nothing showed them
+function histArchAll(){ var a=[]; for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); if(!k||k.indexOf('unitboard_hist_')!==0)continue;
+    try{ (JSON.parse(localStorage.getItem(k)||'[]')||[]).forEach(function(e){ if(e&&e.d)a.push(e); }); }catch(e){} }
+  return a.sort(function(x,y){return (y.archivedAt||0)-(x.archivedAt||0);}); }
+function histArchHTML(){ var a=histArchAll().slice(0,80); if(!a.length)return '';
+  var h='<div class="hdate" style="margin-top:10px;border-top:2px solid #dbe4f3;padding-top:12px">⇥ Transferred / removed patients ('+a.length+') — this computer</div>';
+  a.forEach(function(e){ var d=e.d||{};
+    h+='<div class="hrow" style="cursor:default;align-items:flex-start"><span class="hmeta"><b style="color:#12285e">'+esc(e.date||'')+' · '+esc(e.unit||'')+' · Bed '+esc(e.bed)+'</b> · '+esc(d.age_sex||'—')+' · → '+esc(e.reason||'transfer')
+      +(d.subtitle?'<br>'+esc((''+d.subtitle).slice(0,110)):'')+'</span>'
+      +'<button class="sec2" onclick="histView('+(+e.archivedAt||0)+')" title="Open the note as it was at transfer (read-only)">👁 View</button>'
+      +'<button class="sec2" onclick="histCopy('+(+e.archivedAt||0)+')" title="Copy the note JSON">📋</button></div>'; });
+  return h; }
+function histFind(at){ return histArchAll().filter(function(e){return (+e.archivedAt||0)===at;})[0]; }
+function histCopy(at){ var e=histFind(at); if(!e)return; copyText(JSON.stringify(e.d,null,2)); flashMsg('📋 Note JSON copied — Bed '+e.bed+' ('+e.date+')'); }
+function histView(at){ var e=histFind(at); if(!e)return; var v=document.getElementById('histview');
+  if(!v){ v=document.createElement('div'); v.id='histview'; v.style.cssText='position:fixed;inset:0;background:#eef2f8;z-index:10000;display:flex;flex-direction:column'; document.body.appendChild(v); }
+  v.style.display='flex';
+  v.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:10px 16px;background:#12285e;color:#fff;font-size:14px"><b style="flex:1">👁 Bed '+esc(e.bed)+' · '+esc((e.d||{}).age_sex||'')+' · '+esc(e.unit||'')+' — as charted '+esc(e.date||'')+' (→ '+esc(e.reason||'transfer')+') · read-only</b>'
+    +'<button onclick="document.getElementById(\'histviewf\').contentWindow.print()" style="padding:5px 12px;border-radius:6px;border:0;cursor:pointer;font-weight:700">🖨 Print</button>'
+    +'<button onclick="histCopy('+at+')" style="padding:5px 12px;border-radius:6px;border:0;cursor:pointer;font-weight:700">📋 JSON</button>'
+    +'<button onclick="document.getElementById(\'histview\').style.display=\'none\'" style="padding:5px 12px;border-radius:6px;border:0;cursor:pointer;font-weight:700">× Close</button></div>'
+    +'<div style="padding:4px 16px;font-size:12px;color:#7a3f00;background:#fff7e6">Content is frozen at the transfer. The date and "Day N" in the sheet header are counted to today.</div>'
+    +'<iframe id="histviewf" style="flex:1;border:0;background:#fff;width:min(900px,100%);margin:0 auto"></iframe>';
+  document.getElementById('histviewf').srcdoc=renderRoundingSheet(JSON.parse(JSON.stringify(e.d))); }
 function openHist(){
   var mo=document.getElementById('histmodal');
   if(!mo){
     mo=document.createElement('div'); mo.id='histmodal';
     mo.style.cssText='position:fixed;inset:0;background:rgba(10,20,40,.45);display:none;z-index:9999;align-items:flex-start;justify-content:center';
     mo.onclick=function(e){ if(e.target===mo)closeHist(); };
-    mo.innerHTML='<div style="background:#fff;margin-top:56px;width:min(440px,92vw);max-height:78vh;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
+    mo.innerHTML='<div style="background:#fff;margin-top:56px;width:min(560px,94vw);max-height:78vh;border-radius:12px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.3)">'
       +'<div style="display:flex;align-items:center;gap:8px;padding:12px 16px;background:#12285e;color:#fff"><b style="flex:1">🕑 Your entries — click to open</b>'
       +'<button onclick="closeHist()" style="background:none;border:0;color:#cfe0ff;font-size:20px;cursor:pointer;line-height:1">×</button></div>'
       +'<div id="histbody" style="overflow:auto;padding:6px 0"></div></div>';
