@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.32 · 02-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.33 · 02-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -118,6 +118,7 @@
     <button data-sec="rounding" onclick="showSec('rounding')">Rounding</button>
     <button data-sec="handover" onclick="showSec('handover')">Handover</button>
     <button data-sec="concise" onclick="showSec('concise')">Concise</button>
+    <button data-sec="meds" onclick="showSec('meds')" title="Current medication list for the selected bed, grouped by class">💊 Meds</button>
     <span style="display:inline-block;width:22px"></span>
     <button data-sec="park" onclick="showSec('park')">🅿️ Park</button>
     <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
@@ -1724,6 +1725,7 @@ function renderView(){
   } else if(section==='rounding'){ renderRounding(view); }
   else if(section==='handover'){ renderHandover(view); }
   else if(section==='concise'){ renderConcise(view); }
+  else if(section==='meds'){ renderMeds(view); }
   else if(section==='reference'){ renderReference(view); }
   else if(section==='park'){ renderPark(view); }
   else if(section==='angela'){ renderAngela(view); }
@@ -2827,6 +2829,76 @@ function promptsPanel(){
 
 // §23 rounding sheet for the current bed (uses live edits via the tool's captureToD when reachable)
 // ---- 🩺 Rounding tab: the §23 sheet rendered inline (scrollable), with Print / Save-PDF ----
+// ---- 💊 Meds tab (v2.33): the bed's current med list, pulled from every problem's tx, grouped by class ----
+// No category labels on screen (Dr. V: "don't need to state category") — groups are separated by a gap + a coloured bar;
+// the class name is only a hover title. Held / not-restarted / stopped lines sink to the bottom, greyed.
+var MED_GROUPS=[
+  ['Antimicrobials','#c0392b',/\b(\w*cillin|cef\w*|ceft\w*|\w*penem|vancomycin|linezolid|daptomycin|\w*mycin|\w*micin|\w*floxacin|\w*cycline|metronidazole|tmp|smx|septra|co-?trimoxazole|colistin|amphotericin|\w*fungin|fluconazole|voriconazole|posaconazole|isavuconazole|itraconazole|acyclovir|valacyclovir|ganciclovir|valganciclovir|oseltamivir|remdesivir|tazo\w*|nitrofurantoin|fosfomycin|rifampin|isoniazid|pentamidine|atovaquone|antibiotic\w*|abx)\b/i],
+  ['Sedation / analgesia','#6c3fb5',/\b(propofol|dexmedetomidine|precedex|midazolam|lorazepam|diazepam|ketamine|fentanyl|hydromorphone|dilaudid|morphine|remifentanil|sufentanil|oxycodone|methadone|tramadol|acetaminophen|paracetamol|tylenol|ibuprofen|ketorolac|naproxen|celecoxib|gabapentin|pregabalin|quetiapine|haloperidol|olanzapine|risperidone|trazodone|melatonin|clonidine|chloral hydrate|rocuronium|cisatracurium|vecuronium|lidocaine patch|sedation|analgesi\w*)\b/i],
+  ['Vasoactives','#d35400',/\b(norepinephrine|noradrenaline|levophed|vasopressin|epinephrine|adrenaline|phenylephrine|dopamine|dobutamine|milrinone|angiotensin ii|isoproterenol|vasopressor\w*|inotrope\w*)\b/i],
+  ['Anticoagulation / blood','#8e44ad',/\b(heparin (infusion|drip|gtt)|heparin\b[^.\n]*(units?\/(kg\/)?h|u\/h|aptt|anti-?xa|nomogram)|apixaban|rivaroxaban|warfarin|dabigatran|edoxaban|argatroban|bivalirudin|asa|aspirin|clopidogrel|ticagrelor|prasugrel|tranexamic|txa|vitamin k|phytonadione|protamine|alteplase|tpa|octaplex|prothrombin complex|fibrinogen|cryo\w*|platelets? (transfusion|1 unit|\d+ units?)|prbc|packed red|transfus\w*)\b/i],
+  ['Cardiac / BP / diuretics','#1f6fb2',/\b(metoprolol|bisoprolol|carvedilol|atenolol|propranolol|labetalol|esmolol|amiodarone|digoxin|diltiazem|verapamil|amlodipine|nifedipine|hydralazine|nitroglycerin|nitro patch|nitroprusside|ramipril|perindopril|lisinopril|enalapril|captopril|candesartan|losartan|valsartan|irbesartan|telmisartan|sacubitril|entresto|spironolactone|eplerenone|furosemide|lasix|bumetanide|hydrochlorothiazide|hctz|chlorthalidone|indapamide|metolazone|acetazolamide|atorvastatin|rosuvastatin|simvastatin|pravastatin|ivabradine|adenosine|sotalol|procainamide|flecainide|sildenafil)\b/i],
+  ['Respiratory','#16a085',/\b(salbutamol|albuterol|ventolin|ipratropium|atrovent|budesonide|pulmicort|fluticasone|tiotropium|spiriva|symbicort|advair|nebuli[sz]ed|hypertonic saline neb|dornase|pulmozyme|nitric oxide|ino|heliox|n-?acetylcysteine|montelukast|caffeine citrate)\b/i],
+  ['Neuro','#2c3e50',/\b(levetiracetam|keppra|phenytoin|fosphenytoin|valproate|valproic|lacosamide|carbamazepine|oxcarbazepine|clobazam|phenobarbital|topiramate|lamotrigine|nimodipine|mannitol|3% saline|hypertonic saline|baclofen|pyridostigmine|donepezil|levodopa|sinemet|ivig)\b/i],
+  ['Endocrine / steroids','#b7950b',/\b(insulin\w*|lantus|glargine|detemir|aspart|lispro|humalog|novorapid|hydrocortisone|methylprednisolone|solu-?medrol|prednisone|prednisolone|dexamethasone|fludrocortisone|levothyroxine|synthroid|metformin|gliclazide|glyburide|empagliflozin|dapagliflozin|canagliflozin|sitagliptin|linagliptin|semaglutide|octreotide|desmopressin|ddavp|stress[- ]dose steroid\w*)\b/i],
+  ['GI / nutrition','#7f8c3a',/\b(ondansetron|zofran|metoclopramide|maxeran|domperidone|senna\w*|sennosides|peg ?3350|restoralax|lax-?a-?day|lactulose|docusate|colace|bisacodyl|dulcolax|picosulfate|loperamide|enteral|feeds?|tube feed\w*|tpn|parenteral|ursodiol|ursodeoxycholic|creon|pancrelipase|thiamine|multivitamin|folic acid|vitamin d|cholecalciferol|rifaximin|simethicone|esomeprazole (infusion|8 ?mg\/h)|pantoprazole (infusion|8 ?mg\/h|\d+ ?mg (iv )?b\.?i\.?d))\b/i],
+  ['Renal / electrolytes / fluids','#2e86c1',/\b(potassium|kcl|k-?dur|magnesium|mgso4|phosphate|k-?phos|calcium|sodium bicarb\w*|bicarbonate|sevelamer|calcitriol|calcium carbonate|crrt|cvvhd\w*|dialysis|ihd|citrate|albumin|normal saline|ringer'?s?|lactated|plasma-?lyte|d5w|d10|maintenance fluid\w*|iv fluids?|erythropoietin|epo|darbepoetin|aranesp|iron sucrose|venofer|ferrous)\b/i],
+  ['Prophylaxis','#7f8c8d',/\b(heparin 5,?000|heparin\b[^\n]*\b(sc|subcut\w*|sq)\b|enoxaparin (30|40) ?mg|dalteparin 5,?000|tinzaparin|scds?|sequential compression|pantoprazole|esomeprazole|omeprazole|lansoprazole|famotidine|ranitidine|sucralfate|ppi|vte prophylaxis|dvt prophylaxis|stress ulcer)\b/i],
+  ['Anticoagulation / blood','#8e44ad',/\b(heparin|enoxaparin|dalteparin)\b/i]       // therapeutic LMWH / heparin not caught above
+];
+var MED_HELD=/\b(held|hold(ing)?|not (yet )?restarted|to restart|discontinued|d\/c'?d|stopped|ceased|on hold|suspended)\b/i;
+var MED_DOSE=/\b\d[\d.,]*\s?(mg|mcg|µg|g|units?|u|iu|mmol|meq|ml|mL|%)\b|\b(po|iv|ivp|sc|subcut|sq|im|ng|og|pr|neb|q\d+h|daily|bid|tid|qid|qhs|prn|od|infusion|drip|gtt)\b/i;
+var MED_NONDRUG=/^\W*(ventilat\w*|intubated|prvc|prvc|ac\/vc|simv|psv|pressure support|hfnc|high[- ]flow|bipap|cpap|niv|optiflow|nasal prongs|o2|oxygen|trach\w*|physio\w*|pt\b|ot\b|mobili[sz]\w*|turn\w*|wound care|dressing|drain\w*|chest tube|ng tube|foley|lines?\b|art line|cvc|picc|ett|vac\b|negative[- ]pressure|monitor\w*|telemetry|fluid restrict\w*)/i;
+function medGroupOf(l){ for(var i=0;i<MED_GROUPS.length;i++){ if(MED_GROUPS[i][2].test(l)) return i; } return -1; }
+function medsFor(d){
+  var seen={}, rows=[];
+  ((d&&d.problems)||[]).forEach(function(p){ if(!p)return; var src=hvClean(String(p.name||'').replace(/\s*[—–(].*$/,''));
+    String(p.tx==null?'':(Array.isArray(p.tx)?p.tx.join('\n'):p.tx)).split(/\r?\n|\s+·\s+/).forEach(function(l){
+      l=String(l).replace(/^\s*[-•*]\s*/,'').trim(); if(!l)return;
+      var key=l.toLowerCase().replace(/[^a-z0-9]+/g,' ').trim(); if(seen[key]){ if(seen[key].src.indexOf(src)<0)seen[key].src.push(src); return; }
+      var g=medGroupOf(l), held=MED_HELD.test(l), drug=(g>=0)||(!MED_NONDRUG.test(l)&&MED_DOSE.test(l));
+      var r={text:l, g:g, held:held, drug:drug, src:[src]}; seen[key]=r; rows.push(r); }); });
+  // same text inside a longer line in the same group (e.g. "Vancomycin" + "Vancomycin 1 g IV q12h — Day 3/7") → keep the longer
+  rows=rows.filter(function(r){ var k=r.text.toLowerCase(); return !rows.some(function(o){ return o!==r&&o.g===r.g&&o.text.length>r.text.length&&o.text.toLowerCase().indexOf(k)===0; }); });
+  var rank=function(r){ return r.held?1000:(r.g>=0?r.g:(r.drug?MED_GROUPS.length:MED_GROUPS.length+1)); };
+  return rows.map(function(r,i){r.i=i;return r;}).sort(function(a,b){ return rank(a)-rank(b)||a.i-b.i; });
+}
+function medsHTML(d){
+  var rows=medsFor(d), al=hvAllergy(d.allergies||d.allergy);
+  var h='<div class="medhd"><b>Bed '+esc(''+current)+'</b> · '+esc(d.age_sex||'')+' · Day '+esc(hvDay(d.icu_admit))+(d.subtitle?'<div class="medsub">'+esc(d.subtitle)+'</div>':'')+'</div>'
+    +(al?'<div class="medal">⚠ Allergy: '+esc(al)+'</div>':'');
+  if(!rows.length) return h+'<div class="stub">No medications in this note’s problem list (tx lines).</div>';
+  var last=null;
+  rows.forEach(function(r){ var grp=r.held?'held':(r.g>=0?MED_GROUPS[r.g][0]:(r.drug?'other':'non-drug'));
+    var col=r.held?'#bbb':(r.g>=0?MED_GROUPS[r.g][1]:(r.drug?'#95a5a6':'#d0d5dd'));
+    if(grp!==last){ h+=(last!==null?'</div>':'')+'<div class="medgrp" style="border-left-color:'+col+'" title="'+esc(grp==='held'?'Held / not restarted / stopped':grp==='other'?'Other medications':grp==='non-drug'?'Other treatments':grp)+'">'; last=grp; }
+    h+='<div class="medrow'+(r.held?' held':'')+(r.drug?'':' nd')+'"><span class="medtx">'+rsMed(rsFlag(r.text))+'</span><span class="medsrc">'+esc(r.src.join(' · '))+'</span></div>'; });
+  return h+'</div>';
+}
+function renderMeds(view){
+  if(current==null||!beds[current]||!bd(current)){
+    view.innerHTML='<div class="panel"><div class="stub">Pick a bed on the left to see its <b>current medication list</b>, grouped by class (antimicrobials, sedation, vasoactives …). Pulled from the treatment lines of every problem.</div></div>'; return; }
+  var d=bd(current);
+  view.innerHTML='<div class="rndwrap"><div class="rndbar"><span class="rndttl">💊 Meds · Bed '+esc(''+current)+'</span><span style="flex:1"></span>'
+    +'<button class="rndbtn" onclick="medsCopy()" title="Copy as plain text, one med per line, blank line between groups">📋 Copy</button>'
+    +'<button class="rndprint" onclick="medsPrint()">🖨 Print</button></div>'
+    +'<div class="medwrap"><div class="medcard" id="medcard">'+medsHTML(d)+'</div></div></div>';
+}
+function medsCopy(){ var d=bd(current); if(!d)return; var rows=medsFor(d), out=[], last=null;
+  rows.forEach(function(r){ var g=r.held?'held':r.g+'|'+r.drug; if(last!==null&&g!==last)out.push(''); last=g; out.push((r.held?'(held) ':'')+r.text); });
+  copyText(out.join('\n')); flashMsg('📋 Med list copied — Bed '+current); }
+function medsPrint(){ var c=document.getElementById('medcard'); if(!c)return; var w=window.open('','_blank'); if(!w){ alert('Pop-up blocked — allow pop-ups to print.'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Meds · Bed '+esc(''+current)+'</title><style>'+MEDS_CSS+'body{margin:12mm;font-family:Segoe UI,Helvetica Neue,Arial,sans-serif}.medcard{box-shadow:none;border:0;padding:0}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}</style></head><body><div class="medcard">'+c.innerHTML+'</div></body></html>');
+  w.document.close(); w.focus(); setTimeout(function(){ w.print(); },300); }
+var MEDS_CSS='.medwrap{flex:1;overflow:auto;padding:16px}.medcard{background:#fff;max-width:860px;margin:0 auto;border-radius:10px;padding:16px 20px;box-shadow:0 2px 10px rgba(20,40,80,.12);color:#12213f}'
+ +'.medhd{font-size:16px;margin-bottom:8px}.medhd b{color:#1a3c8f;font-size:18px}.medsub{font-size:14px;color:#445;margin-top:3px;font-weight:600}'
+ +'.medal{background:#fde8e8;border:1px solid #b02020;color:#b02020;font-weight:700;border-radius:6px;padding:6px 10px;margin:6px 0 10px;font-size:15px}'
+ +'.medgrp{border-left:5px solid #ccc;padding:3px 0 3px 12px;margin:10px 0}'
+ +'.medrow{display:flex;gap:14px;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:15px;line-height:1.4;border-bottom:1px dotted #e3e8f0}.medrow:last-child{border-bottom:0}'
+ +'.medtx{flex:1}.medsrc{color:#8a97a8;font-size:12px;text-align:right;max-width:34%}'
+ +'.medrow.held .medtx{color:#888;font-style:italic}.medrow.nd .medtx{color:#556}'
+ +'.medflag{color:#7a3f00;background:#fff2d9;font-style:italic;font-weight:600;padding:0 3px;border-radius:2px}.hi{color:#b02020;font-weight:700}.lo{color:#1a5fb4;font-weight:700}';
+(function(){ var st=document.createElement('style'); st.textContent=MEDS_CSS; document.head.appendChild(st); })();
 function renderRounding(view){
   if(current==null||!beds[current]||!bd(current)){
     view.innerHTML='<div class="panel"><div class="stub">Pick a bed on the left to see its <b>rounding sheet</b> — a one-page, presentation-ready summary (one-liner · relevant PMHx · overnight · problem list in priority). Use <b>🖨 Print / Save PDF</b> to take it to rounds.</div></div>';
