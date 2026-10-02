@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.33 · 02-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.34 · 02-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1477,6 +1477,9 @@ function pvGroups(p){ var w=beds[p.bed], probs=(w.d.problems||[]), gp=((w._gen||
     out.push({head:head,rows:rows}); });
   var misc=[];
   Object.keys(PV_LBL).forEach(function(s){ (p[s]||[]).forEach(function(l,x){ misc.push({k:[s,x],t:PV_LBL[s]+': '+l, h:(s==='investigations_add'&&mResMods(l).length)?'lines still waiting for this '+mResMods(l).join('/').toUpperCase()+' get ✓ answered':''}); }); });
+  if(Array.isArray(p.meds)) misc.push({k:['meds'],t:'💊 MAR list replaced: '+p.meds.length+' orders'+(p.meds_asof?' (as of '+p.meds_asof+')':'')});
+  (p.meds_add||[]).forEach(function(m,x){ misc.push({k:['meds_add',x],t:'＋ med: '+medTxt(m)+((m&&m.prn)?' (PRN)':'')}); });
+  (p.meds_stop||[]).forEach(function(m,x){ misc.push({k:['meds_stop',x],t:'⛔ med: '+medTxt(m)}); });
   ['vitals','fluids'].forEach(function(s){ if(p[s]) misc.push({k:[s],t:s+': '+Object.keys(p[s]).map(function(q){return q+' '+p[s][q];}).join(' · ')}); });
   (p.labs||[]).forEach(function(s,x){ misc.push({k:['labs',x],t:'labs '+(s.section||'')+': '+(s.items||[]).map(function(q){return q.l+' '+q.v;}).join(' · ')}); });
   ['subtitle','handover_line','pod','reason_for_icu'].forEach(function(s){ if(p[s]!=null) misc.push({k:[s],t:s.replace('_',' ')+': '+p[s]}); });
@@ -1586,6 +1589,11 @@ function mergePatch(p,opt){ opt=opt||{};
     (d.tasks||[]).forEach(function(t,ti){ if(t&&t.kind==='pending'&&hit(t.text||'')){ w.taskDone=w.taskDone||[]; if(w.taskDone.indexOf(ti)<0){ w.taskDone.push(ti); cnt.stale++; } } });
   });
   (p.pending_add||[]).forEach(function(e){ [d,g].forEach(function(t){ t.tasks=t.tasks||[]; if(!t.tasks.some(function(x){return _mn(x.text)===_mn(e);}))t.tasks.push({text:e,kind:'pending'}); }); });
+  // 4d · MAR med list (v2.34): meds = the whole list re-read from a new MAR (replaces) · meds_add / meds_stop = deltas · meds_asof
+  if(Array.isArray(p.meds)){ d.meds=_mj(p.meds); g.meds=_mj(p.meds); cnt.add++; }
+  (p.meds_stop||[]).forEach(function(x){ x=medTxt(x); [d,g].forEach(function(t){ var b4=(t.meds||[]).length; t.meds=(t.meds||[]).filter(function(m){ return !mStopHit(medTxt(m),x); }); if(t===d&&t.meds.length<b4)cnt.stop++; }); });
+  (p.meds_add||[]).forEach(function(m){ if(!medTxt(m).trim())return; [d,g].forEach(function(t){ t.meds=t.meds||[]; if(!t.meds.some(function(o){return _mn(medTxt(o))===_mn(medTxt(m));})){ t.meds.push(_mj(m)); if(t===d)cnt.add++; } }); });
+  if(p.meds_asof){ d.meds_asof=g.meds_asof=p.meds_asof; }
   if(p._meta){ d._meta=p._meta; }
   delete d.handover; if(p.handover_line==null&&(cnt.add||cnt.stop||cnt.np))delete d.handover_line;   // data moved → stale handover card re-derives
   w.d=d; w._gen=g; w._rej=rej; mScmStale(w); delete w._scm; hovRefreshBed(n);   // a saved v2 handover/concise would otherwise hide the update
@@ -2863,15 +2871,34 @@ function medsFor(d){
   var rank=function(r){ return r.held?1000:(r.g>=0?r.g:(r.drug?MED_GROUPS.length:MED_GROUPS.length+1)); };
   return rows.map(function(r,i){r.i=i;return r;}).sort(function(a,b){ return rank(a)-rank(b)||a.i-b.i; });
 }
+// v2.34: the list comes from the note's own MAR med list (d.meds — every active order from the morning MAR photos); the
+// problem tx lines are only a fallback for notes written before d.meds existed. PRNs get their own sub-section.
+var MED_CLS={abx:0,sed:1,vaso:2,anticoag:3,cardiac:4,resp:5,neuro:6,endo:7,gi:8,renal:9,proph:10,other:-1};
+function medTxt(m){ return typeof m==='string'?m:String((m&&(m.med||m.t||m.text))||''); }
+function medsFromMAR(d){
+  return (d.meds||[]).map(function(m,i){ if(typeof m==='string')m={med:m}; m=m||{}; var t=medTxt(m).trim(); if(!t)return null;
+    var g=(m.cls&&MED_CLS.hasOwnProperty(String(m.cls).toLowerCase()))?MED_CLS[String(m.cls).toLowerCase()]:medGroupOf(t);
+    return {text:t, g:g, held:!!m.held||MED_HELD.test(t), prn:!!m.prn||/\bprn\b/i.test(t), drug:true, src:m.note?[String(m.note)]:[], i:i}; }).filter(Boolean); }
+function medsRows(d){ var mar=Array.isArray(d.meds)&&d.meds.length, rows=mar?medsFromMAR(d):medsFor(d);
+  rows.forEach(function(r){ if(r.prn==null)r.prn=/\bprn\b/i.test(r.text); });
+  var sec=function(r){ return r.held?2:(r.prn?1:0); }, rank=function(r){ return r.g>=0?r.g:(r.drug?MED_GROUPS.length:MED_GROUPS.length+1); };
+  rows.sort(function(a,b){ return sec(a)-sec(b)||rank(a)-rank(b)||a.i-b.i; });
+  return {mar:!!mar, rows:rows, sec:sec}; }
 function medsHTML(d){
-  var rows=medsFor(d), al=hvAllergy(d.allergies||d.allergy);
+  var R=medsRows(d), rows=R.rows, al=hvAllergy(d.allergies||d.allergy);
+  var nS=rows.filter(function(r){return R.sec(r)===0;}).length, nP=rows.filter(function(r){return R.sec(r)===1;}).length, nH=rows.length-nS-nP;
   var h='<div class="medhd"><b>Bed '+esc(''+current)+'</b> · '+esc(d.age_sex||'')+' · Day '+esc(hvDay(d.icu_admit))+(d.subtitle?'<div class="medsub">'+esc(d.subtitle)+'</div>':'')+'</div>'
-    +(al?'<div class="medal">⚠ Allergy: '+esc(al)+'</div>':'');
-  if(!rows.length) return h+'<div class="stub">No medications in this note’s problem list (tx lines).</div>';
-  var last=null;
-  rows.forEach(function(r){ var grp=r.held?'held':(r.g>=0?MED_GROUPS[r.g][0]:(r.drug?'other':'non-drug'));
+    +(al?'<div class="medal">⚠ Allergy: '+esc(al)+'</div>':'')
+    +(R.mar?'<div class="medsrcln">MAR list'+(d.meds_asof?' · as of '+esc(d.meds_asof):'')+' · '+nS+' scheduled · '+nP+' PRN'+(nH?' · '+nH+' held':'')+'</div>'
+           :'<div class="mednomar">No MAR list in this note yet — showing the treatment lines from the problems instead, which can miss meds. Send the MAR photos with the morning note to fill it.</div>');
+  if(!rows.length) return h+'<div class="stub">No medications in this note.</div>';
+  var last=null, lastSec=-1;
+  rows.forEach(function(r){ var sc=R.sec(r), grp=sc+'|'+(r.g>=0?r.g:(r.drug?'o':'n'));
     var col=r.held?'#bbb':(r.g>=0?MED_GROUPS[r.g][1]:(r.drug?'#95a5a6':'#d0d5dd'));
-    if(grp!==last){ h+=(last!==null?'</div>':'')+'<div class="medgrp" style="border-left-color:'+col+'" title="'+esc(grp==='held'?'Held / not restarted / stopped':grp==='other'?'Other medications':grp==='non-drug'?'Other treatments':grp)+'">'; last=grp; }
+    var ttl=r.g>=0?MED_GROUPS[r.g][0]:(r.drug?'Other medications':'Other treatments');
+    if(grp!==last){ if(last!==null)h+='</div>';
+      if(sc!==lastSec&&sc>0) h+='<div class="medsec">'+(sc===1?'PRN':'Held / not restarted')+'</div>';
+      lastSec=sc; h+='<div class="medgrp" style="border-left-color:'+col+'" title="'+esc(ttl)+'">'; last=grp; }
     h+='<div class="medrow'+(r.held?' held':'')+(r.drug?'':' nd')+'"><span class="medtx">'+rsMed(rsFlag(r.text))+'</span><span class="medsrc">'+esc(r.src.join(' · '))+'</span></div>'; });
   return h+'</div>';
 }
@@ -2884,8 +2911,10 @@ function renderMeds(view){
     +'<button class="rndprint" onclick="medsPrint()">🖨 Print</button></div>'
     +'<div class="medwrap"><div class="medcard" id="medcard">'+medsHTML(d)+'</div></div></div>';
 }
-function medsCopy(){ var d=bd(current); if(!d)return; var rows=medsFor(d), out=[], last=null;
-  rows.forEach(function(r){ var g=r.held?'held':r.g+'|'+r.drug; if(last!==null&&g!==last)out.push(''); last=g; out.push((r.held?'(held) ':'')+r.text); });
+function medsCopy(){ var d=bd(current); if(!d)return; var R=medsRows(d), out=[], last=null, lastSec=0;
+  R.rows.forEach(function(r){ var sc=R.sec(r), g=sc+'|'+r.g+'|'+r.drug;
+    if(sc!==lastSec){ out.push('', sc===1?'PRN:':'Held / not restarted:'); lastSec=sc; last=g; }
+    else if(last!==null&&g!==last) out.push(''); last=g; out.push(r.text); });
   copyText(out.join('\n')); flashMsg('📋 Med list copied — Bed '+current); }
 function medsPrint(){ var c=document.getElementById('medcard'); if(!c)return; var w=window.open('','_blank'); if(!w){ alert('Pop-up blocked — allow pop-ups to print.'); return; }
   w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Meds · Bed '+esc(''+current)+'</title><style>'+MEDS_CSS+'body{margin:12mm;font-family:Segoe UI,Helvetica Neue,Arial,sans-serif}.medcard{box-shadow:none;border:0;padding:0}*{print-color-adjust:exact;-webkit-print-color-adjust:exact}</style></head><body><div class="medcard">'+c.innerHTML+'</div></body></html>');
@@ -2893,6 +2922,8 @@ function medsPrint(){ var c=document.getElementById('medcard'); if(!c)return; va
 var MEDS_CSS='.medwrap{flex:1;overflow:auto;padding:16px}.medcard{background:#fff;max-width:860px;margin:0 auto;border-radius:10px;padding:16px 20px;box-shadow:0 2px 10px rgba(20,40,80,.12);color:#12213f}'
  +'.medhd{font-size:16px;margin-bottom:8px}.medhd b{color:#1a3c8f;font-size:18px}.medsub{font-size:14px;color:#445;margin-top:3px;font-weight:600}'
  +'.medal{background:#fde8e8;border:1px solid #b02020;color:#b02020;font-weight:700;border-radius:6px;padding:6px 10px;margin:6px 0 10px;font-size:15px}'
+ +'.medsrcln{font-size:13px;color:#556;margin:2px 0 6px}.mednomar{background:#fff7e6;border:1px solid #e0b060;color:#7a3f00;border-radius:6px;padding:6px 10px;margin:6px 0 10px;font-size:14px}'
+ +'.medsec{font-size:14px;font-weight:800;color:#1a3c8f;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 4px;padding-top:8px;border-top:2px solid #dbe4f3}'
  +'.medgrp{border-left:5px solid #ccc;padding:3px 0 3px 12px;margin:10px 0}'
  +'.medrow{display:flex;gap:14px;justify-content:space-between;align-items:baseline;padding:3px 0;font-size:15px;line-height:1.4;border-bottom:1px dotted #e3e8f0}.medrow:last-child{border-bottom:0}'
  +'.medtx{flex:1}.medsrc{color:#8a97a8;font-size:12px;text-align:right;max-width:34%}'
