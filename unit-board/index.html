@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.29 · 01-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.30 · 01-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -580,19 +580,30 @@ function hvGocCode(status){ var m=hvClean(status).toUpperCase().match(/^(R[123]|
 function hvGocShort(status){ var c=hvGocCode(status); return c?(c+' — '+GOC_SHORT[c]):hvClean(status); }
 // Transfer tag — unambiguous DIRECTION (→ leaving to / ← came from) + SPECIFIC destination + DATE. Never a bare "Transfer".
 var HV_MONc={jan:'Jan',feb:'Feb',mar:'Mar',apr:'Apr',may:'May',jun:'Jun',jul:'Jul',aug:'Aug',sep:'Sep',oct:'Oct',nov:'Nov',dec:'Dec'};
+// DATE (feedback 02-Oct, Bed 4 "→ Ward · 5 Oct" was really the repeat-CT date): only a date that belongs to the
+// TRANSFER counts — a date right after a test/procedure word (CT, ERCP, echo, clinic…) is that event's date, skipped.
+var HV_EVT_RX=/\b(?:ct|cta|mri|mrcp|ercp|eus|scan|echo|tte|tee|us|u\/s|ultrasound|x-?ray|cxr|scope|endoscopy|colonoscopy|bronch\w*|biopsy|drain\w*|ir|repeat|clinic|f\/u|follow[- ]?up|appt|appointment|stent removal|procedure|dialysis|hd)\b[^,;.·—]{0,24}$/i;
+var HV_DATE_RX=/\b(\d{1,2})\s?(?:st|nd|rd|th)?[-\s]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-\s]?(\d{1,2})\b/ig;
+function hvTransferDate(s){
+  HV_DATE_RX.lastIndex=0; var m;
+  while((m=HV_DATE_RX.exec(s))){
+    if(HV_EVT_RX.test(s.slice(0,m.index))) continue;              // "repeat CT abdomen 05 Oct" → CT's date, not the move's
+    return m[1] ? {d:+m[1], mon:m[2]} : {d:+m[4], mon:m[3]};
+  }
+  return null;
+}
 function hvTransferTag(s){
   var sl=s.toLowerCase();
-  var dm=s.match(/\b(\d{1,2})\s?(?:st|nd|rd|th)?[-\s]?(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i)
-       || s.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*[-\s]?(\d{1,2})\b/i);
-  var date='';
+  var dm=hvTransferDate(s);
+  var date='', waitDays=-1;
   if(dm){
-    var dNum, mName; if(/^\d/.test(dm[1])){ dNum=+dm[1]; mName=dm[2]; } else { dNum=+dm[2]; mName=dm[1]; }
+    var dNum=dm.d, mName=dm.mon;
     var mIdx={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}[mName.toLowerCase()];
     var now=new Date(); now.setHours(0,0,0,0);
     var dt=new Date(now.getFullYear(), mIdx, dNum); dt.setHours(0,0,0,0);
     if(dt-now>300*86400000) dt=new Date(now.getFullYear()-1, mIdx, dNum);   // rolled into future → last year
     var diff=Math.round((now-dt)/86400000);
-    if(diff>=1 && diff<=120) date=' · '+diff+'d';                           // boarding / pending N days
+    if(diff>=1 && diff<=120){ waitDays=diff; date=' · '+diff+'d'; }           // accepted N days ago, still here
     else if(diff===0) date=' · today';
     else date=' · '+dNum+' '+HV_MONc[mName.toLowerCase()];                  // future/planned → show the date
   }
@@ -624,6 +635,8 @@ function hvTransferTag(s){
   // fallback: capture the destination after a to/from, stopping at a clause boundary (comma, once/when/if/for/pending/after)
   else { var mm=s.match(/(?:to|from|→|←)\s+([A-Za-z][A-Za-z /'-]{1,28}?)(?=\s*(?:,|;|\bonce\b|\bwhen\b|\bif\b|\bfor\b|\bpending\b|\bafter\b|\bwhen\b|$))/i);
          dest=mm?mm[1].trim():hvCap(s,22); }
+  // outbound + transfer date in the past = accepted but still boarding → "→ Surgery ward · awaiting bed (4d)"
+  if(!inbound && waitDays>0) date=' · awaiting bed ('+waitDays+'d)';
   return (inbound?'← from ':'→ ')+dest+date;
 }
 
