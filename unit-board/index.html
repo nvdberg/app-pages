@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.30 · 01-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.31 · 02-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -592,6 +592,21 @@ function hvTransferDate(s){
   }
   return null;
 }
+// AUTHORED chips (d.handover.tags) get the same check (2-Oct, Bed 4 still showed "→ Ward · 5 Oct"): if the chip's date
+// appears in the note ONLY as a test/procedure date (never as a free-standing/transfer date), drop the date from the chip.
+function hvFixTransferDate(tags, d, h){
+  var hay=[]; (function walk(v){ if(v==null)return; if(typeof v==='string')hay.push(v); else if(typeof v==='object'){ for(var k in v){ if(k!=='tags')walk(v[k]); } } })({p:(d||{}).problems,h:h});
+  return (tags||[]).map(function(t){
+    if(!t||!/transfer-tag/.test(t.cls||'')||typeof t.text!=='string'||!/^\s*→/.test(t.text)) return t;
+    HV_DATE_RX.lastIndex=0; var m=HV_DATE_RX.exec(t.text); if(!m) return t;
+    var day=+(m[1]||m[4]), mon=(m[2]||m[3]).toLowerCase().slice(0,3), evt=0, free=0;
+    hay.forEach(function(s){ HV_DATE_RX.lastIndex=0; var x;
+      while((x=HV_DATE_RX.exec(s))){ if(+(x[1]||x[4])!==day||(x[2]||x[3]).toLowerCase().slice(0,3)!==mon)continue;
+        if(HV_EVT_RX.test(s.slice(0,x.index)))evt++; else free++; } });
+    HV_DATE_RX.lastIndex=0;
+    if(evt&&!free) return {cls:t.cls, text:t.text.replace(/\s*[·,–—-]?\s*$/,'').replace(new RegExp('\\s*[·,–—-]?\\s*'+m[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\s*'),' ').trim()};
+    return t; });
+}
 function hvTransferTag(s){
   var sl=s.toLowerCase();
   var dm=hvTransferDate(s);
@@ -742,7 +757,7 @@ function authoredCard(d, overnight, uncap){
   // Day-1 "New Admit" chip: the transform path adds it, so the authored path must too — otherwise a bed
   // with a pre-authored card loses the new-admit marker. Only when the author didn't already supply one,
   // and only if there's room, so an allergy / ARO / transfer chip is never pushed out.
-  var _tags=(h.tags||[]).slice(0,3);
+  var _tags=hvFixTransferDate((h.tags||[]).slice(0,3), d, h);
   if(day===1 && _tags.length<3 && !_tags.some(function(t){return t&&/\bnew-tag\b/.test(t.cls||'');}))
     _tags.push({cls:'new-tag',text:'New Admit'});
   var bed={ pt:hvClean(d.age_sex)+' · Day '+day,
