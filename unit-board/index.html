@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.39 · 04-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.40 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -123,6 +123,8 @@
     <button data-sec="park" onclick="showSec('park')">🅿️ Park</button>
     <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
+    <button data-sec="oncall" onclick="showSec('oncall')" title="Who is on call — intensivists and cardiology">📟 On call</button>
+    <button data-sec="menu" onclick="showSec('menu')" title="Cafeteria menu">🍽 Menu</button>
     <button data-sec="capture" id="captab" onclick="showSec('capture')" title="Capture — on-call lists and menus for Working-Bolt">Capture<span class="capdot"></span></button>
     <button data-sec="angela" id="angtab" onclick="showSec('angela')" hidden>🔬 Angela</button>
     <span class="setwrap">
@@ -1283,6 +1285,85 @@ function capMenuCommit(P,site,page){   // → result line {k,t,w,next}; a page i
     return capUpsert('cafeteria_menu','site,page',[{site:site,page:page,first_date:P.first_date,days:P.days,imported_at:new Date().toISOString()}]).then(function(){
       var cyc=capCycle()[site];
       return {k:'ok',t:'✓ '+site+' week '+page+' — '+capShort(P.first_date)+' → '+capShort(P.days[6].date)+', '+P.items+' dishes',w:P.warn.join(' · '),next:(cyc&&page>=cyc)?null:{site:site,page:page+1}}; }); }); }
+
+// ───────────────────────── viewers: 📟 On call · 🍽 Menu (read-only, straight from Supabase) ─────────────────────────
+var capView={roster:null,menus:null,err:null,at:0,busy:false,off:0};
+var CAPV_CSS='.cvw{height:100%;overflow:auto;padding:16px;background:#eef2f8;box-sizing:border-box}.cvin{max-width:1180px;margin:0 auto}'
+  +'.cvh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 12px}.cvh h2{margin:0;font-size:22px;color:#12305a}.cvh .sub{color:#5b6b82;font-size:14px}.cvh button{margin-left:auto}'
+  +'.cvbtn{border:1px solid #b9c6da;background:#fff;border-radius:8px;padding:7px 13px;font-size:14px;cursor:pointer;color:#12305a}.cvbtn.on{background:#12305a;color:#fff;border-color:#12305a}'
+  +'.cvnow{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:16px}'
+  +'.cvchip{background:#fff;border:1px solid #cfd9e8;border-left:6px solid #2f6fd0;border-radius:10px;padding:10px 12px}.cvchip.ccu{border-left-color:#c0392b}.cvchip.stemi{border-left-color:#d98a00}'
+  +'.cvchip .u{font-size:13px;font-weight:700;letter-spacing:.04em;color:#5b6b82;text-transform:uppercase}.cvchip .n{font-size:21px;font-weight:700;color:#12213a;overflow-wrap:anywhere}.cvchip .x{font-size:13px;color:#5b6b82;margin-top:2px}'
+  +'.cvt{width:100%;border-collapse:collapse;background:#fff;border:1px solid #cfd9e8;border-radius:10px;overflow:hidden;font-size:15px}'
+  +'.cvt th{background:#12305a;color:#fff;text-align:left;padding:8px 10px;font-size:13px;letter-spacing:.03em;position:sticky;top:0}.cvt th small{display:block;font-weight:400;opacity:.8}'
+  +'.cvt td{padding:7px 10px;border-top:1px solid #e3e9f2;vertical-align:top;overflow-wrap:anywhere}.cvt tr.we td{background:#f5f7fb}.cvt tr.td td{background:#fff6d6;font-weight:700}.cvt td.d{white-space:nowrap;color:#12305a;font-weight:700}'
+  +'.cvt .nt{color:#5b6b82;font-weight:400}.cvt .none{color:#b3bccb}'
+  +'.cvempty{background:#fff;border:1px dashed #b9c6da;border-radius:10px;padding:22px;color:#5b6b82;font-size:16px}'
+  +'.cvbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.cvsec{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}'
+  +'.cvcard{background:#fff;border:1px solid #cfd9e8;border-radius:10px;padding:12px 14px}.cvcard h3{margin:0 0 8px;font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:#2f6fd0}'
+  +'.cvit{display:flex;gap:10px;justify-content:space-between;padding:5px 0;border-top:1px solid #eef2f8;font-size:16px}.cvit:first-of-type{border-top:0}.cvit .p{color:#5b6b82;white-space:nowrap}'
+  +'.cvnote{color:#8a5a00;background:#fff6d6;border-radius:8px;padding:7px 11px;font-size:14px;margin-bottom:12px}';
+function capvCss(){ if(document.getElementById('capvcss')) return; var st=document.createElement('style'); st.id='capvcss'; st.textContent=CAPV_CSS; document.head.appendChild(st); }
+function capViewLoad(force){ if(capView.busy) return; if(!force&&capView.at&&Date.now()-capView.at<300000) return;
+  var t=new Date(), a=capYmd(capAddDays(t,-1)), b=capYmd(capAddDays(t,34)); capView.busy=true;
+  Promise.all([capSb('GET','/oncall_roster?select=date,unit,role,name,imported_at&date=gte.'+a+'&date=lte.'+b+'&order=date.asc&limit=3000'),
+               capSb('GET','/cafeteria_menu?select=site,page,first_date,days,imported_at&order=page.asc')])
+    .then(function(r){ capView.roster=r[0]||[]; capView.menus=r[1]||[]; capView.err=null; capView.at=Date.now(); },function(e){ capView.err=e.message; })
+    .then(function(){ capView.busy=false; if(typeof section!=='undefined'&&(section==='oncall'||section==='menu')) renderView(); }); }
+function capvWhen(d){ return CAP_WD[d.getDay()].slice(0,3)+' '+CAP_MONTHS[d.getMonth()].slice(0,3)+' '+d.getDate(); }
+function capvHead(title,sub){ return '<div class="cvh"><h2>'+title+'</h2><span class="sub">'+esc(sub||'')+'</span><button class="cvbtn" onclick="capViewLoad(true)">'+(capView.busy?'Loading…':'↻ Refresh')+'</button></div>'; }
+function capvEmpty(what){ return '<div class="cvempty">'+(capView.err?esc(capView.err):(capView.roster===null?'Loading…':'No '+what+' loaded yet — load it in the <a href="#" onclick="showSec(\'capture\');return false">Capture</a> tab.'))+'</div>'; }
+
+// ── On call ──
+var CAPV_UNITS=['PHICU','SICU','MICU','CCU'];
+function capvIdx(){ var ix={}; (capView.roster||[]).forEach(function(r){ ix[r.date+'|'+r.unit+'|'+r.role]=r.name; }); return ix; }
+function capvPair(a,b){ a=a||''; b=b||''; if(!a&&!b) return '<span class="none">—</span>'; if(a===b||!b) return esc(a); if(!a) return '<span class="nt">night</span> '+esc(b); return esc(a)+' <span class="nt">/ '+esc(b)+'</span>'; }
+function renderOncall(view){ capvCss(); capViewLoad(false);
+  var t=new Date(), ix=capvIdx(), hr=t.getHours(), ty=capYmd(t), yy=capYmd(capAddDays(t,-1));
+  var h='<div class="cvw"><div class="cvin">'+capvHead('📟 On call',capvWhen(t));
+  if(!(capView.roster||[]).length){ view.innerHTML=h+capvEmpty('on-call list')+'</div></div>'; return; }
+  // right now: 08–17 = day person · 17–08 = on-call person (before 08:00 it is still last night's)
+  var night=hr>=17||hr<8, nd=hr<8?yy:ty, lab=night?(hr<8?'overnight · until 08:00':'tonight · from 17:00'):'today · until 17:00';
+  h+='<div class="cvnow">';
+  CAPV_UNITS.forEach(function(u){ var day=ix[ty+'|'+u+'|day'], on=ix[nd+'|'+u+'|oncall'], now=night?(on||ix[nd+'|'+u+'|day']):day, nxt=night?(hr<8?ix[ty+'|'+u+'|day']:null):ix[ty+'|'+u+'|oncall'];
+    h+='<div class="cvchip'+(u==='CCU'?' ccu':'')+'"><div class="u">'+u+'</div><div class="n">'+(now?esc(now):'<span class="none">not loaded</span>')+'</div><div class="x">'+lab+(nxt&&nxt!==now?' · then '+esc(nxt):'')+'</div></div>'; });
+  var st=night?ix[nd+'|CCU|stemi_oncall']:ix[ty+'|CCU|stemi_day'];
+  h+='<div class="cvchip stemi"><div class="u">STEMI</div><div class="n">'+(st?esc(st):'<span class="none">not loaded</span>')+'</div><div class="x">'+lab+'</div></div>';
+  var co=ix[ty+'|CCU|consults']; if(co&&!night) h+='<div class="cvchip ccu"><div class="u">Cardiology consults</div><div class="n">'+esc(co)+'</div><div class="x">08:00–17:00</div></div>';
+  h+='</div>';
+  h+='<table class="cvt"><thead><tr><th>Date</th><th>Pasqua ICU<small>day / on call</small></th><th>SICU<small>day / on call</small></th><th>MICU<small>day / on call</small></th><th>CCU<small>before / after 17:00</small></th><th>STEMI<small>before / after 17:00</small></th><th>Consults<small>08–17</small></th></tr></thead><tbody>';
+  var last=(capView.roster[capView.roster.length-1]||{}).date||ty;
+  for(var i=0;i<35;i++){ var d=capAddDays(t,i), k=capYmd(d); if(k>last) break; var we=d.getDay()===0||d.getDay()===6;
+    h+='<tr class="'+(i===0?'td':(we?'we':''))+'"><td class="d">'+capvWhen(d)+'</td>';
+    ['PHICU','SICU','MICU'].forEach(function(u){ h+='<td>'+capvPair(ix[k+'|'+u+'|day'],ix[k+'|'+u+'|oncall'])+'</td>'; });
+    h+='<td>'+capvPair(ix[k+'|CCU|day'],ix[k+'|CCU|oncall'])+'</td><td>'+capvPair(ix[k+'|CCU|stemi_day'],ix[k+'|CCU|stemi_oncall'])+'</td><td>'+(ix[k+'|CCU|consults']?esc(ix[k+'|CCU|consults']):'<span class="none">—</span>')+'</td></tr>'; }
+  h+='</tbody></table></div></div>'; view.innerHTML=h; }
+
+// ── Menu ──
+function capvSite(){ var s=null; try{ s=localStorage.getItem('ub_menu_site'); }catch(e){} if(CAP_SITES.indexOf(s)>=0) return s;
+  try{ if(typeof unit!=='undefined'&&/PICU/i.test(String(unit||''))) return 'PH'; }catch(e){} return 'RGH'; }
+function capvSetSite(s){ try{ localStorage.setItem('ub_menu_site',s); }catch(e){} renderView(); }
+function capvSetOff(n){ capView.off=n; renderView(); }
+function capvMenuDay(site,date){   // → {day, page, exact, weeks} — the stored week that this date falls in, repeating the rotation
+  var pages=(capView.menus||[]).filter(function(m){ return m.site===site&&m.days&&m.days.length===7; }); if(!pages.length) return null;
+  var known=capCycle()[site], C=known||pages.reduce(function(n,p){ return Math.max(n,+p.page); },0), span=7*C, best=null;
+  pages.forEach(function(p){ var diff=Math.round((date-capFromYmd(p.first_date))/86400000), m=((diff%span)+span)%span;
+    if(m<7&&(!best||Math.abs(diff)<Math.abs(best.diff))) best={day:p.days[m],page:+p.page,exact:diff>=0&&diff<7,diff:diff,weeks:C,known:!!known}; });
+  return best; }
+function capvPrice(p){ if(p==null||p==='') return ''; return typeof p==='number'?'$'+p.toFixed(2):String(p); }
+function renderMenu(view){ capvCss(); capViewLoad(false);
+  var t=new Date(), site=capvSite(), off=capView.off||0, d=capAddDays(t,off);
+  var h='<div class="cvw"><div class="cvin">'+capvHead('🍽 Menu',(site==='PH'?'Pasqua':'Regina General')+' · '+capvWhen(d));
+  h+='<div class="cvbar">'+CAP_SITES.map(function(s){ return '<button class="cvbtn'+(s===site?' on':'')+'" onclick="capvSetSite(\''+s+'\')">'+(s==='PH'?'Pasqua':'Regina General')+'</button>'; }).join('')+'</div>';
+  if(!(capView.menus||[]).some(function(m){ return m.site===site; })){ view.innerHTML=h+capvEmpty((site==='PH'?'Pasqua':'Regina General')+' menu')+'</div></div>'; return; }
+  h+='<div class="cvbar">'; for(var i=0;i<7;i++){ var x=capAddDays(t,i); h+='<button class="cvbtn'+(i===off?' on':'')+'" onclick="capvSetOff('+i+')">'+(i===0?'Today':(i===1?'Tomorrow':capvWhen(x)))+'</button>'; } h+='</div>';
+  var M=capvMenuDay(site,d);
+  if(!M){ h+='<div class="cvempty">Week not loaded for this day — capture the missing week in the <a href="#" onclick="showSec(\'capture\');return false">Capture</a> tab.</div>'; }
+  else { if(!M.exact) h+='<div class="cvnote">Worked out from the rotation (week '+M.page+' of '+M.weeks+(M.known?'':' loaded — cycle length not confirmed on this PC')+'), not a captured page for this exact date.</div>';
+    var secs=(M.day.sections||[]).filter(function(s){ return (s.items||[]).length; });
+    if(!secs.length) h+='<div class="cvempty">No dishes listed for '+esc(M.day.weekday||'this day')+'.</div>';
+    else h+='<div class="cvsec">'+secs.map(function(s){ return '<div class="cvcard"><h3>'+esc(s.label||'Specials')+'</h3>'+s.items.map(function(it){ return '<div class="cvit"><span>'+esc(it.name)+'</span><span class="p">'+esc(capvPrice(it.price))+'</span></div>'; }).join('')+'</div>'; }).join('')+'</div>'; }
+  h+='</div></div>'; view.innerHTML=h; }
 </script>
 <script>
 // ---- embedded tools (base64, injected per bed / for handover) ----
@@ -2254,6 +2335,8 @@ function renderView(){
   else if(section==='angela'){ renderAngela(view); }
   else if(section==='prompts'){ renderPrompts(view); }
   else if(section==='capture'){ renderCapture(view); }
+  else if(section==='oncall'){ renderOncall(view); }
+  else if(section==='menu'){ renderMenu(view); }
   renderBedBar();
 }
 // capture the OUTGOING bed's iframe state (edited fields via captureToD + the SCM block) before it's re-mounted
