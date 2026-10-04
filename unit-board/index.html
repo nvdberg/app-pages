@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.43 · 04-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.44 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1293,8 +1293,8 @@ var CAPV_CSS='.cvw{height:100%;overflow:auto;padding:16px;background:#eef2f8;box
   +'.cvh{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin:0 0 12px}.cvh h2{margin:0;font-size:22px;color:#12305a}.cvh .sub{color:#5b6b82;font-size:14px}.cvh button{margin-left:auto}'
   +'.cvbtn{border:1px solid #b9c6da;background:#fff;border-radius:8px;padding:7px 13px;font-size:14px;cursor:pointer;color:#12305a}.cvbtn.on{background:#12305a;color:#fff;border-color:#12305a}'
   +'.cvnow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.cvrow{border-radius:12px;padding:10px 12px 12px;margin-bottom:12px;background:#e3e9f3}.cvrow.live{background:#fff;box-shadow:0 0 0 2px #2f6fd0}.cvlab{font-size:15px;font-weight:700;color:#12305a;margin-bottom:8px}.cvlab small{font-weight:400;color:#5b6b82;margin-left:6px;font-size:13px}.cvchip.night{border-left-color:#3b2f7a;background:#f3f1fb}.cvchip.wide{grid-column:span 3}.cvt td.ng{background:#f3f1fb}.cvt tr.td td.ng{background:#efe9c8}@media(max-width:800px){.cvnow{grid-template-columns:1fr 1fr}.cvchip.wide{grid-column:span 2}}'
-  +'.cvchip{background:#fff;border:1px solid #cfd9e8;border-left:6px solid #2f6fd0;border-radius:10px;padding:10px 12px}.cvchip.ccu{border-left-color:#c0392b}.cvchip.stemi{border-left-color:#d98a00}'
-  +'.cvchip .u{font-size:13px;font-weight:700;letter-spacing:.04em;color:#5b6b82;text-transform:uppercase}.cvchip .n{font-size:21px;font-weight:700;color:#12213a;overflow-wrap:anywhere}.cvchip .x{font-size:13px;color:#5b6b82;margin-top:2px}'
+  +'.cvchip{background:#fff;border:1px solid #cfd9e8;border-left:6px solid #2f6fd0;border-radius:10px;padding:10px 12px}.cvchip.ccu{border-left-color:#BF3654}.cvchip.ccu .u{color:#BF3654}.cvchip.u-PHICU{border-left-color:#0A7B71}.cvchip.u-PHICU .u{color:#0A7B71}.cvchip.u-SICU{border-left-color:#3A70EE}.cvchip.u-SICU .u{color:#3A70EE}.cvchip.u-MICU{border-left-color:#41A00E}.cvchip.u-MICU .u{color:#2f7a0a}.cvt th.c-PHICU{background:#0A7B71}.cvt th.c-SICU{background:#3A70EE}.cvt th.c-MICU{background:#41A00E}.cvt th.c-CCU{background:#BF3654}.cvchip.stemi{border-left-color:#d98a00}'
+  +'.cvchip .u{font-size:13px;font-weight:700;letter-spacing:.04em;color:#5b6b82;text-transform:uppercase}.cvchip .n{font-size:17px;font-weight:700;color:#12213a;overflow-wrap:anywhere}.cvchip .x{font-size:13px;color:#5b6b82;margin-top:2px}'
   +'.cvt{width:100%;border-collapse:collapse;background:#fff;border:1px solid #cfd9e8;border-radius:10px;overflow:hidden;font-size:15px}'
   +'.cvt th{background:#12305a;color:#fff;text-align:left;padding:8px 10px;font-size:13px;letter-spacing:.03em;position:sticky;top:0}.cvt th small{display:block;font-weight:400;opacity:.8}'
   +'.cvt td{padding:7px 10px;border-top:1px solid #e3e9f2;vertical-align:top;overflow-wrap:anywhere}.cvt tr.we td{background:#f5f7fb}.cvt tr.td td{background:#fff6d6;font-weight:700}.cvt td.d{white-space:nowrap;color:#12305a;font-weight:700}'
@@ -1333,17 +1333,17 @@ function renderOncall(view){ capvCss(); capViewLoad(false);
   // 08–17 = each unit's day intensivist · 17–08 = the night on-call (before 08:00 it is still last night's)
   var night=hr>=17||hr<8, nd=hr<8?yy:ty, dayK=ty;
   h+='<div class="cvrow'+(night?'':' live')+'"><div class="cvlab">☀️ Day <small>08:00–17:00'+(night?'':' · now')+'</small></div><div class="cvnow">';
-  CAPV_ICU.forEach(function(u){ var n=ix[dayK+'|'+u[0]+'|day']; h+='<div class="cvchip"><div class="u">'+u[1]+'</div><div class="n">'+(n?esc(n):'<span class="none">not loaded</span>')+'</div></div>'; });
+  CAPV_ICU.forEach(function(u){ var n=ix[dayK+'|'+u[0]+'|day']; h+='<div class="cvchip u-'+u[0]+'"><div class="u">'+u[1]+'</div><div class="n">'+(n?esc(n):'<span class="none">not loaded</span>')+'</div></div>'; });
   var cd=ix[dayK+'|CCU|day'], sd=ix[dayK+'|CCU|stemi_day'], co=ix[dayK+'|CCU|consults'];
   h+='<div class="cvchip ccu"><div class="u">CCU</div><div class="n">'+(cd?esc(cd):'<span class="none">not loaded</span>')+'</div>'+(sd||co?'<div class="x">'+(sd?'STEMI '+esc(sd):'')+(sd&&co?' · ':'')+(co?'consults '+esc(co):'')+'</div>':'')+'</div>';
   h+='</div></div>';
   var G=capvNight(ix,nd), cn=ix[nd+'|CCU|oncall'], sn=ix[nd+'|CCU|stemi_oncall'];
   h+='<div class="cvrow'+(night?' live':'')+'"><div class="cvlab">🌙 Night on call <small>17:00–08:00'+(night?' · now':'')+(hr<8?' · since last evening':'')+'</small></div><div class="cvnow">';
   if(!G.length) h+='<div class="cvchip night wide"><div class="u">All ICUs</div><div class="n"><span class="none">not loaded</span></div></div>';
-  if(G.length) h+='<div class="cvchip night wide"><div class="u">All ICUs · Pasqua ICU · SICU · MICU</div><div class="n">'+esc(G[0].name)+'</div>'+(G.length>1?'<div class="x">2nd on call (mass event only): '+G.slice(1).map(function(x){ return esc(x.name); }).join(', ')+'</div>':'')+'</div>';
+  if(G.length) h+='<div class="cvchip night wide"><div class="u">All ICUs · Pasqua ICU · SICU · MICU</div><div class="n">'+esc(G[0].name)+'</div>'+(G.length>1?'<div class="x">2nd on call: '+G.slice(1).map(function(x){ return esc(x.name); }).join(', ')+'</div>':'')+'</div>';
   h+='<div class="cvchip ccu"><div class="u">CCU</div><div class="n">'+(cn?esc(cn):'<span class="none">not loaded</span>')+'</div>'+(sn?'<div class="x">STEMI '+esc(sn)+'</div>':'')+'</div>';
   h+='</div></div>';
-  h+='<table class="cvt"><thead><tr><th>Date</th><th>Pasqua ICU<small>day</small></th><th>SICU<small>day</small></th><th>MICU<small>day</small></th><th>🌙 Night on call<small>all ICUs · 2nd call</small></th><th>CCU<small>before / after 17:00</small></th><th>STEMI<small>before / after 17:00</small></th><th>Consults<small>08–17</small></th></tr></thead><tbody>';
+  h+='<table class="cvt"><thead><tr><th>Date</th><th class="c-PHICU">Pasqua ICU<small>day</small></th><th class="c-SICU">SICU<small>day</small></th><th class="c-MICU">MICU<small>day</small></th><th>🌙 Night on call<small>all ICUs · 2nd call</small></th><th class="c-CCU">CCU<small>before / after 17:00</small></th><th class="c-CCU">STEMI<small>before / after 17:00</small></th><th class="c-CCU">Consults<small>08–17</small></th></tr></thead><tbody>';
   var last=(capView.roster[capView.roster.length-1]||{}).date||ty, dash='<span class="none">—</span>';
   for(var i=0;i<35;i++){ var d=capAddDays(t,i), k=capYmd(d); if(k>last) break; var we=d.getDay()===0||d.getDay()===6;
     h+='<tr class="'+(i===0?'td':(we?'we':''))+'"><td class="d">'+capvWhen(d)+'</td>';
