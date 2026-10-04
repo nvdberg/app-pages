@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.38 · 04-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.39 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -920,11 +920,35 @@ function capParseCardio(items, nowIso){
       var o=pick(oc), s2=pick(st);
       days[mk.n]={day:o[0],oncall:o[1],stemi_day:ex(s2[0]),stemi_oncall:ex(s2[1]),consults:ex(cons)}; });
   }
-  var missing=[]; for(var d=1;d<=last;d++){ if(!days[d]||!days[d].day||!days[d].oncall) missing.push(d); }
-  var rows=[]; for(var d2=1;d2<=last;d2++){ var dd=days[d2]||{}, date=yr+'-'+('0'+(mi+1)).slice(-2)+'-'+('0'+d2).slice(-2);
-    ['day','oncall','stemi_day','stemi_oncall','consults'].forEach(function(r){ rows.push({date:date,unit:'CCU',role:r,name:dd[r]||null,source:'cardiology-pdf',imported_at:nowIso}); }); }
-  return {year:yr, month:mi, last:last, fw:fw, days:days, rows:rows, missing:missing, unknown:Object.keys(unknown), legendN:Object.keys(legend).length};
+  var P=capCardioFinish(yr,mi,days,nowIso); P.unknown=Object.keys(unknown); P.legendN=Object.keys(legend).length; return P;
 }
+function capCardioFinish(yr,mi,days,nowIso){   // days {1..last:{day,oncall,stemi_day,stemi_oncall,consults}} → rows + the sanity check
+  var last=new Date(yr,mi+1,0).getDate(), fw=new Date(yr,mi,1).getDay(), missing=[], rows=[];
+  for(var d=1;d<=last;d++){ if(!days[d]||!days[d].day||!days[d].oncall) missing.push(d); }
+  for(var d2=1;d2<=last;d2++){ var dd=days[d2]||{}, date=yr+'-'+('0'+(mi+1)).slice(-2)+'-'+('0'+d2).slice(-2);
+    ['day','oncall','stemi_day','stemi_oncall','consults'].forEach(function(r){ rows.push({date:date,unit:'CCU',role:r,name:dd[r]||null,source:'cardiology-pdf',imported_at:nowIso}); }); }
+  return {year:yr, month:mi, last:last, fw:fw, days:days, rows:rows, missing:missing, unknown:[], legendN:0};
+}
+// fallback route: a screenshot / printed PDF read by Claude in a chat, pasted here as JSON (see CAP_CARD_PROMPT)
+function capParseCardioJson(text, nowIso){
+  var t=String(text||''), a=t.indexOf('{'), b=t.lastIndexOf('}'), o;
+  try{ o=JSON.parse(t.slice(a,b+1)); }catch(e){ throw new Error('That cardiology JSON is incomplete — copy the whole code block from the Claude chat and paste again.'); }
+  o=o.cardiology||o; var yr=+o.year, mi=+o.month-1;
+  if(!(yr>2000)||!(mi>=0&&mi<=11)||!o.days||typeof o.days!=='object') throw new Error('The cardiology JSON needs "year", "month" and "days" — ask the Claude chat to follow the prompt exactly.');
+  var days={}, nm=function(v){ v=v==null?'':capClean(String(v)).replace(/^dr\.?\s+/i,''); return (!v||/^(null|none|\?|unknown|n\/a)$/i.test(v))?null:v; };
+  Object.keys(o.days).forEach(function(k){ var n=parseInt(k,10), x=o.days[k]||{}; if(!(n>=1&&n<=31)) return;
+    var d=nm(x.day), oc=nm(x.oncall)||d, sd=nm(x.stemi_day), so=nm(x.stemi_oncall)||sd;
+    days[n]={day:d,oncall:oc,stemi_day:sd,stemi_oncall:so,consults:nm(x.consults)}; });
+  return capCardioFinish(yr,mi,days,nowIso);
+}
+var CAP_CARD_PROMPT='Read the attached cardiology on-call calendar (one month) and reply with ONLY one JSON code block, no other text:\n'
+ +'{"cardiology":{"year":2026,"month":10,"days":{"1":{"day":"","oncall":"","stemi_day":"","stemi_oncall":"","consults":""},"2":{…}}}}\n\n'
+ +'Rules:\n- month/year: from the title or the Month / Year boxes. One entry for EVERY day of the month.\n'
+ +'- day / oncall = the cardiologist on call, written as a full surname in the cell. Split day ("X before 1700" / "Y after 1700"): day = X, oncall = Y. Otherwise both the same.\n'
+ +'- stemi_day / stemi_oncall = the initials beside the day number (interventional / STEMI), split the same way.\n'
+ +'- consults = the initials on the "8-5 Consults:" line.\n'
+ +'- Expand every set of initials to the SURNAME using the legend at the bottom of the page (e.g. "XX – Dr. X. Surname" → "Surname"). Surnames only, no "Dr.".\n'
+ +'- Ignore "STAT". Do not guess: if something cannot be read, use null. Staff names only — there is no patient information on this page.';
 
 // ───────────────────────── 3 · CAFETERIA MENUS (rows of cells of lines) ─────────────────────────
 var CAP_DAYRX=/^\s*(SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY)\s*,?\s+([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
@@ -1112,7 +1136,7 @@ var CAP_CSS='.capwrap{height:100%;overflow:auto;padding:16px;background:#eef2f8;
  +'.capcal{border-collapse:collapse;width:100%;margin:10px 0 4px;table-layout:fixed}.capcal th{font-size:12.5px;color:#667;font-weight:700;padding:2px}.capcal td{border:1px solid #cfd8e6;vertical-align:top;padding:3px 4px;height:46px;font-size:13.5px;line-height:1.25;overflow:hidden;overflow-wrap:anywhere}'
  +'.capcal td b{display:block;font-size:12px;color:#889}.capcal td.miss{background:#fde8e8}.capcal td.off{background:#f4f6f9;border-color:#e4e9f0}'
  +'.capdot{display:none;min-width:17px;height:17px;line-height:17px;border-radius:9px;background:#e08a00;color:#fff;font-size:12px;font-weight:700;text-align:center;margin-left:6px;vertical-align:middle}'
- +'.capdue{background:#fff0d0;border:1px solid #e9c46a;color:#6b4300;border-radius:9px;padding:9px 13px;margin:0 0 12px;font-size:15px;font-weight:600}.capdue div{font-weight:500;margin-top:3px}';
+ +'details.capalt{margin-top:10px;font-size:14.5px}details.capalt summary{cursor:pointer;color:#1a4fa8;font-weight:700}.capfix{width:100%;box-sizing:border-box;font:inherit;font-size:13.5px;padding:2px 3px;border:1px solid #d08080;border-radius:4px}.capdue{background:#fff0d0;border:1px solid #e9c46a;color:#6b4300;border-radius:9px;padding:9px 13px;margin:0 0 12px;font-size:15px;font-weight:600}.capdue div{font-weight:500;margin-top:3px}';
 (function(){ if(typeof document==='undefined'||!document.head) return; var st=document.createElement('style'); st.textContent=CAP_CSS; document.head.appendChild(st); })();
 
 function capPetalUrl(){ var t=new Date(); return CAP_PETAL+'?startTime='+capYmd(capAddDays(t,-2))+'&endTime='+capYmd(capAddDays(t,200))+'&layoutId=3373&page=1&perPage=50'; }
@@ -1135,10 +1159,12 @@ function capPaint(){
     +'<div class="capzone" tabindex="0">Paste here (Ctrl+V)</div>'+capResHTML(capRes.petal)+'</div>';
   h+='<div class="capcard"'+(capCardio?' style="grid-column:1/-1;order:9"':'')+'><h3>Cardiology '+capStHTML(S.cardio)+'</h3>'
     +'<button class="capbtn" onclick="capOpen(capCardUrl(0))">Open '+esc(th.name)+' ↗</button><button class="capbtn s" onclick="capOpen(capCardUrl(1))">Open '+esc(nx.name)+' ↗</button>'
-    +'<div class="capins"><b>Download</b> the PDF (download icon in the viewer) and <b>drag it here</b>, or click to pick the file.</div>'
+    +'<div class="capins"><b>Download</b> the PDF (download icon in the viewer — <b>not</b> Print → Save as PDF) and <b>drag it here</b>, or click to pick the file.</div>'
     +'<div class="capzone" tabindex="0" id="capdrop" onclick="document.getElementById(\'capfile\').click()">Drop the PDF here · or click to choose</div>'
     +'<input type="file" id="capfile" accept="application/pdf,.pdf" style="display:none" onchange="if(this.files[0])capFiles(this.files);this.value=\'\'">'
-    +capResHTML(capRes.cardio)+capCardioPreview()+'</div>';
+    +capResHTML(capRes.cardio)+capCardioPreview()
+    +'<details class="capalt"'+(capRes.cardio&&capRes.cardio.k==='err'?' open':'')+'><summary>PDF won\'t read? Use a screenshot instead</summary>'
+    +'<div class="capins">1 · Screenshot the calendar (or keep the printed PDF). 2 · <button class="capbtn s" style="margin:0 2px" onclick="copyText(CAP_CARD_PROMPT);this.textContent=\'✓ Prompt copied\'">Copy prompt</button> and paste it into a Claude chat with the screenshot attached. 3 · Copy Claude\'s JSON reply and press <b>Ctrl+V</b> anywhere on this tab. You still get the preview grid to check before anything uploads.</div></details></div>';
   h+='<div class="capcard"><h3>Cafeteria '+capStHTML(S.menu)+'</h3>';
   CAP_SITES.forEach(function(site){ var have=capMenuPages(site), mx=have.length?have[have.length-1]:0, n=cyc[site]||Math.max(4,mx+1);
     h+='<div class="capsite">'+site+' week</div>';
@@ -1163,6 +1189,8 @@ function capOnPaste(e){ if(typeof section==='undefined'||section!=='capture') re
   e.preventDefault(); e.stopPropagation();
   var text=cd.getData('text/plain')||'', html=cd.getData('text/html')||'';
   if(/requirementsPerDay/.test(text)) return capPetalPaste(text);
+  if(/"cardiology"\s*:/.test(text)||(/"stemi_day"/.test(text)&&/"days"/.test(text))){ capCardio=null;
+    try{ var CP=capParseCardioJson(text,new Date().toISOString()); capCardio={P:CP,blocked:CP.missing.length>0}; return capCardioMsg(); }catch(er){ return capSet('cardio',{k:'err',t:er.message}); } }
   if(/^\s*%PDF/.test(text)) return capSet('cardio',{k:'err',t:'Copy/paste doesn\'t work for the cardiology list — download the PDF and drag the file here.'});
   capMenuPaste(html,text); }
 function capOnDrop(e){ if(typeof section==='undefined'||section!=='capture') return; e.preventDefault(); e.stopPropagation();
@@ -1219,16 +1247,21 @@ function capCardioFile(file){ capFiles([file]); }
 function capCardioItems(items){ capCardio=null;
   Promise.resolve().then(function(){
     var P=capParseCardio(items,new Date().toISOString());
-    if(P.missing.length){ capCardio={P:P,blocked:true}; return capSet('cardio',{k:'err',t:'Couldn\'t read the PDF cleanly — '+P.missing.length+' day'+(P.missing.length>1?'s':'')+' missing ('+P.missing.slice(0,12).join(', ')+(P.missing.length>12?'…':'')+'). Nothing was uploaded.'}); }
-    capCardio={P:P}; capSet('cardio',{k:'wait',t:CAP_MONTHS[P.month]+' '+P.year+' read — check it against the PDF, then upload.',w:P.unknown.length?'initials not in the legend, kept as written: '+P.unknown.join(', '):''}); })
+    capCardio={P:P,blocked:P.missing.length>0}; capCardioMsg(); })
   .catch(function(e){ capSet('cardio',{k:'err',t:e.message||String(e)}); }); }
 function capCardioPreview(){ if(!capCardio) return ''; var P=capCardio.P, h='<table class="capcal"><tr>'+CAP_WD.map(function(w){ return '<th>'+w.slice(0,3)+'</th>'; }).join('')+'</tr><tr>';
   for(var i=0;i<P.fw;i++) h+='<td class="off"></td>';
-  for(var d=1;d<=P.last;d++){ var x=P.days[d]||{}, ok=x.day&&x.oncall; h+='<td class="'+(ok?'':'miss')+'"><b>'+d+'</b>'+(ok?esc(x.day)+(x.oncall!==x.day?' / '+esc(x.oncall):''):'?')+'</td>'; if((P.fw+d)%7===0&&d<P.last) h+='</tr><tr>'; }
+  for(var d=1;d<=P.last;d++){ var x=P.days[d]||{}, ok=x.day&&x.oncall; h+='<td class="'+(ok?'':'miss')+'"><b>'+d+'</b>'+(ok?esc(x.day)+(x.oncall!==x.day?' / '+esc(x.oncall):''):(capCardio.done?'?':'<input class="capfix" placeholder="surname" title="Type the on-call surname (or Day / Night for a split day), then Enter" onchange="capCardioFix('+d+',this.value)">'))+'</td>'; if((P.fw+d)%7===0&&d<P.last) h+='</tr><tr>'; }
   for(var j=(P.fw+P.last)%7;j&&j<7;j++) h+='<td class="off"></td>';
   h+='</tr></table><div style="font-size:13px;color:#667">On-call surname per day (day / after 1700 when split).</div>';
   if(!capCardio.blocked&&!capCardio.done) h+='<button class="capbtn" onclick="capCardioUpload()">✓ Looks right — upload '+CAP_MONTHS[P.month]+'</button><button class="capbtn s" onclick="capCardio=null;capSet(\'cardio\',null)">Cancel</button>';
   return h; }
+function capCardioMsg(){ var P=capCardio.P, n=P.missing.length;
+  if(n) return capSet('cardio',{k:'err',t:'Couldn\'t read it cleanly — '+n+' day'+(n>1?'s':'')+' missing ('+P.missing.slice(0,12).join(', ')+(n>12?'…':'')+'). Nothing was uploaded. Type the missing surnames into the red boxes below, or use the screenshot route.'});
+  capSet('cardio',{k:'wait',t:CAP_MONTHS[P.month]+' '+P.year+' read — check it against the calendar, then upload.',w:P.unknown&&P.unknown.length?'initials not in the legend, kept as written: '+P.unknown.join(', '):''}); }
+function capCardioFix(d,val){ if(!capCardio) return; var P=capCardio.P, parts=capClean(val).split(/\s*\/\s*/).filter(Boolean); if(!parts.length) return;
+  var x=P.days[d]||(P.days[d]={day:null,oncall:null,stemi_day:null,stemi_oncall:null,consults:null}); x.day=parts[0]; x.oncall=parts[1]||parts[0];
+  var N=capCardioFinish(P.year,P.month,P.days,new Date().toISOString()); N.unknown=P.unknown; N.legendN=P.legendN; capCardio={P:N,blocked:N.missing.length>0}; capCardioMsg(); }
 function capCardioUpload(){ if(!capCardio||capCardio.blocked) return; var P=capCardio.P; capSet('cardio',{k:'wait',t:'Uploading '+P.rows.length+' rows…'});
   capUpsert('oncall_roster','date,unit,role',P.rows).then(function(){ capCardio.done=true; capSet('cardio',{k:'ok',t:'✓ '+P.rows.length+' rows, '+capShort(P.rows[0].date)+' → '+capShort(P.rows[P.rows.length-1].date)}); return capRefresh(); },
     function(e){ capSet('cardio',{k:'err',t:e.message}); }); }
