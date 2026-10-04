@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.40 · 04-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.41 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1005,7 +1005,8 @@ function capParseMenuRows(rows, today){
     (first.length?[first]:[]).concat(others).forEach(function(c){
       if(c.length&&!/\$/.test(c.join(' '))&&sec.items.length&&!sec.items[sec.items.length-1].price){ sec.items[sec.items.length-1].name=capClean(sec.items[sec.items.length-1].name+' '+c.join(' ')); return; }
       capCellItems(c,sec.items); }); });
-  days.forEach(function(d){ d.sections=d.sections.filter(function(s){ return s.items.length; }); });
+  days.forEach(function(d){ d.sections.forEach(function(s){ s.label=capvLabel(s.label); s.items=s.items.filter(capvRealItem); });   // page footer links are not food
+    d.sections=d.sections.filter(function(s){ return s.items.length; }); });
   if(!days.length) throw new Error('No menu days found in that paste — on the menu page press Ctrl+A, Ctrl+C, then Ctrl+V here.');
   if(days.length!==7) throw new Error('Found '+days.length+' of 7 days on that page — make sure the whole page was selected (Ctrl+A) before copying.');
   for(var i=0;i<7;i++){ if(days[i].weekday!==CAP_WD[i]) throw new Error('The days are not Sunday → Saturday in order — copy the whole page again.');
@@ -1302,7 +1303,7 @@ var CAPV_CSS='.cvw{height:100%;overflow:auto;padding:16px;background:#eef2f8;box
   +'.cvbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.cvsec{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}'
   +'.cvcard{background:#fff;border:1px solid #cfd9e8;border-radius:10px;padding:12px 14px}.cvcard h3{margin:0 0 8px;font-size:14px;letter-spacing:.05em;text-transform:uppercase;color:#2f6fd0}'
   +'.cvit{display:flex;gap:10px;justify-content:space-between;padding:5px 0;border-top:1px solid #eef2f8;font-size:16px}.cvit:first-of-type{border-top:0}.cvit .p{color:#5b6b82;white-space:nowrap}'
-  +'.cvnote{color:#8a5a00;background:#fff6d6;border-radius:8px;padding:7px 11px;font-size:14px;margin-bottom:12px}';
+  +'.cvgrp{font-size:17px;font-weight:700;color:#12305a;margin:16px 0 8px}.cvgrp:first-of-type{margin-top:4px}.cvnote{color:#8a5a00;background:#fff6d6;border-radius:8px;padding:7px 11px;font-size:14px;margin-bottom:12px}';
 function capvCss(){ if(document.getElementById('capvcss')) return; var st=document.createElement('style'); st.id='capvcss'; st.textContent=CAPV_CSS; document.head.appendChild(st); }
 function capViewLoad(force){ if(capView.busy) return; if(!force&&capView.at&&Date.now()-capView.at<300000) return;
   var t=new Date(), a=capYmd(capAddDays(t,-1)), b=capYmd(capAddDays(t,34)); capView.busy=true;
@@ -1350,6 +1351,17 @@ function capvMenuDay(site,date){   // → {day, page, exact, weeks} — the stor
   pages.forEach(function(p){ var diff=Math.round((date-capFromYmd(p.first_date))/86400000), m=((diff%span)+span)%span;
     if(m<7&&(!best||Math.abs(diff)<Math.abs(best.diff))) best={day:p.days[m],page:+p.page,exact:diff>=0&&diff<7,diff:diff,weeks:C,known:!!known}; });
   return best; }
+function capvLabel(l){ return capClean(String(l||'').replace(/\s*top of page[\s\S]*$/i,'')); }
+function capvRealItem(it){ return !/^prior\b.*\bweek\b/i.test(String(it&&it.name||'')); }
+function capvGroups(day){   // lunch feature + side → pizza · soup → supper feature + side
+  var G=[{title:'Lunch',secs:[]},{title:'Pizza · Soup',secs:[]},{title:'Supper',secs:[]}], supper=false;
+  (day.sections||[]).forEach(function(s){ var lab=capvLabel(s.label), items=(s.items||[]).filter(capvRealItem), l=lab.toLowerCase(), g; if(!items.length) return;
+    if(/^(caf[ée]\s*pizza|pizza|today.s soup|soup)/.test(l)) g=1; else if(/^supper/.test(l)){ g=2; supper=true; } else if(/^(lunch|chef)/.test(l)) g=0; else g=supper?2:0;
+    if(/supper/.test(l)) supper=true;
+    G[g].secs.push({label:lab,items:items}); });
+  [0,2].forEach(function(i){ G[i].secs.sort(function(a,b){ return (/side/i.test(a.label)&&!/feature/i.test(a.label)?1:0)-(/side/i.test(b.label)&&!/feature/i.test(b.label)?1:0); }); });
+  G[1].secs.sort(function(a,b){ return (/soup/i.test(a.label)?1:0)-(/soup/i.test(b.label)?1:0); });
+  return G; }
 function capvPrice(p){ if(p==null||p==='') return ''; return typeof p==='number'?'$'+p.toFixed(2):String(p); }
 function renderMenu(view){ capvCss(); capViewLoad(false);
   var t=new Date(), site=capvSite(), off=capView.off||0, d=capAddDays(t,off);
@@ -1360,9 +1372,10 @@ function renderMenu(view){ capvCss(); capViewLoad(false);
   var M=capvMenuDay(site,d);
   if(!M){ h+='<div class="cvempty">Week not loaded for this day — capture the missing week in the <a href="#" onclick="showSec(\'capture\');return false">Capture</a> tab.</div>'; }
   else { if(!M.exact) h+='<div class="cvnote">Worked out from the rotation (week '+M.page+' of '+M.weeks+(M.known?'':' loaded — cycle length not confirmed on this PC')+'), not a captured page for this exact date.</div>';
-    var secs=(M.day.sections||[]).filter(function(s){ return (s.items||[]).length; });
-    if(!secs.length) h+='<div class="cvempty">No dishes listed for '+esc(M.day.weekday||'this day')+'.</div>';
-    else h+='<div class="cvsec">'+secs.map(function(s){ return '<div class="cvcard"><h3>'+esc(s.label||'Specials')+'</h3>'+s.items.map(function(it){ return '<div class="cvit"><span>'+esc(it.name)+'</span><span class="p">'+esc(capvPrice(it.price))+'</span></div>'; }).join('')+'</div>'; }).join('')+'</div>'; }
+    var G=capvGroups(M.day), any=G.some(function(g){ return g.secs.length; });
+    if(!any) h+='<div class="cvempty">No dishes listed for '+esc(M.day.weekday||'this day')+'.</div>';
+    else G.forEach(function(g){ if(!g.secs.length) return;
+      h+='<div class="cvgrp">'+g.title+'</div><div class="cvsec">'+g.secs.map(function(s){ return '<div class="cvcard"><h3>'+esc(s.label||'Specials')+'</h3>'+s.items.map(function(it){ return '<div class="cvit"><span>'+esc(it.name)+'</span><span class="p">'+esc(capvPrice(it.price))+'</span></div>'; }).join('')+'</div>'; }).join('')+'</div>'; }); }
   h+='</div></div>'; view.innerHTML=h; }
 </script>
 <script>
