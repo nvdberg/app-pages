@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.37 · 04-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.38 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -989,6 +989,49 @@ function capParseMenuRows(rows, today){
   if(empty.length) warn.push('no dishes read for '+empty.join(', '));
   return {site:site, first_date:days[0].date, days:days, warn:warn, items:days.reduce(function(n,d){ return n+d.sections.reduce(function(k,s){ return k+s.items.length; },0); },0)};
 }
+// menu PDF (the page saved/printed as PDF): text items with x/y → the same rows-of-cells-of-lines the HTML path produces
+function capPdfMenuRows(items){
+  var lines=capLines(items), L=[];
+  lines.forEach(function(l){ var segs=[], cur=null;
+    l.items.forEach(function(it){ var str=String(it.str); if(!str.trim()) return; var x1=it.x+(it.w||0);
+      if(cur&&it.x-cur.x1<=Math.max(9,(it.h||8)*1.3)){ cur.t+=(it.x-cur.x1>Math.max(1,(it.h||8)*0.18)&&!/\s$/.test(cur.t)&&!/^\s/.test(str)?' ':'')+str; cur.x1=Math.max(cur.x1,x1); }
+      else { cur={x0:it.x,x1:x1,t:str}; segs.push(cur); } });
+    segs.forEach(function(g){ g.t=capClean(g.t); }); segs=segs.filter(function(g){ return g.t; });
+    if(segs.length) L.push({y:l.y,segs:segs,text:segs.map(function(g){ return g.t; }).join(' ')}); });
+  var start=-1; for(var i=0;i<L.length;i++){ if(CAP_DAYRX.test(L[i].text)){ start=i; break; } }
+  if(start<0) return L.map(function(l){ return [[l.text]]; });
+  var body=L.slice(start).filter(function(l){ return !CAP_DAYRX.test(l.text); }), labelLeft=Infinity, itemLeft=Infinity;
+  body.forEach(function(l){ l.segs.forEach(function(g){ if(/\$\s*\d/.test(g.t)){ if(g.x0<itemLeft) itemLeft=g.x0; } }); });
+  body.forEach(function(l){ var g=l.segs[0]; if(!/\$\s*\d/.test(g.t)&&g.x0<labelLeft) labelLeft=g.x0; });
+  var split=(isFinite(itemLeft)&&itemLeft-labelLeft>18)?labelLeft+(itemLeft-labelLeft)*0.6:labelLeft+40;
+  var rows=[], row=null, seenSite=false;
+  var done=function(r){ return !r||r.cells.slice(1).every(function(c){ return c.lines.length&&/\$\s*\d/.test(c.lines[c.lines.length-1]); }); };
+  L.forEach(function(l,ix){
+    if(/Daily\s+Specials/i.test(l.text)){ if(!seenSite&&ix<=start){ seenSite=true; rows.push([[l.text]]); } return; }
+    if(ix<start) return;
+    if(CAP_DAYRX.test(l.text)){ rows.push([[l.text]]); row=null; return; }
+    if(/https?:\/\/|\bfile:\/\/|^\d{1,2}\/\d{1,2}\/\d{2,4}\b|\b\d+\s*\/\s*\d+\s*$|^page\s+\d+/i.test(l.text)) return;   // print header / footer lines
+    var g0=l.segs[0], lab=g0.x0<split&&!/\$\s*\d/.test(g0.t), rest=lab?l.segs.slice(1):l.segs;
+    if(lab&&(!row||done(row)||rest.some(function(g){ return !/\$\s*\d/.test(g.t); })&&row.cells.length<2)){
+      row={cells:l.segs.map(function(g){ return {x0:g.x0,c:(g.x0+g.x1)/2,lines:[g.t]}; })}; rows.push(row); return; }
+    if(!row) return;
+    if(lab) row.cells[0].lines.push(g0.t);
+    rest.forEach(function(g){ var c=(g.x0+g.x1)/2, best=null, bd=Infinity;
+      row.cells.slice(1).forEach(function(cl){ var d=Math.min(Math.abs(cl.x0-g.x0),Math.abs(cl.c-c)); if(d<bd){ bd=d; best=cl; } });
+      if(best&&bd<=90) best.lines.push(g.t); else { row.cells.push({x0:g.x0,c:c,lines:[g.t]}); row.cells.sort(function(a,b){ return a===row.cells[0]?-1:(b===row.cells[0]?1:a.x0-b.x0); }); } }); });
+  return rows.map(function(r){ return Array.isArray(r)?r:r.cells.map(function(c){ return c.lines; }); });
+}
+// which week is each dropped menu? hint (file name / the week button) → else counted in weeks from that site's week 1
+function capAssignPages(list, w1bySite){   // list: [{site,first_date,hint}] → sets .page or .err
+  var by={}; list.forEach(function(m){ (by[m.site]=by[m.site]||[]).push(m); });
+  Object.keys(by).forEach(function(site){ var arr=by[site], w1=null, h1=arr.filter(function(m){ return m.hint===1; })[0];
+    if(h1) w1=h1.first_date; else if(w1bySite&&w1bySite[site]) w1=w1bySite[site];
+    else if(arr.length>1&&!arr.some(function(m){ return m.hint; })) w1=arr.map(function(m){ return m.first_date; }).sort()[0];
+    arr.forEach(function(m){ if(m.hint){ m.page=m.hint; return; }
+      var wk=w1?Math.round((capFromYmd(m.first_date)-capFromYmd(w1))/86400000)/7:NaN;
+      if(wk===Math.floor(wk)&&wk>=0&&wk<8) m.page=wk+1; else m.err='Can\'t tell which week this '+site+' menu is — click its week button first, then drop the PDF again.'; }); });
+  return list;
+}
 function capMenuSig(days){ return (days||[]).map(function(d){ return d.weekday+':'+(d.sections||[]).map(function(s){ return capClean(s.label).toLowerCase()+'='+(s.items||[]).map(function(i){ return capClean(i.name).toLowerCase(); }).join('|'); }).join(';'); }).join('\n'); }
 
 // ───────────────────────── Supabase ─────────────────────────
@@ -1017,28 +1060,41 @@ function capRefresh(){
     one('/oncall_roster?select=imported_at,date&source=eq.cardiology-pdf&order=imported_at.desc&limit=1'),
     one('/oncall_roster?select=date&source=eq.cardiology-pdf&date=gte.'+th.a+'&date=lt.'+th.b+'&limit=1'),
     one('/oncall_roster?select=date&source=eq.cardiology-pdf&date=gte.'+nx.a+'&date=lt.'+nx.b+'&limit=1'),
-    capSb('GET','/cafeteria_menu?select=site,page,imported_at')
-  ]).then(function(r){ capState={loaded:true,err:null,petal:r[0],cardio:r[1],cardThis:r[2],cardNext:r[3],menus:r[4]||[]}; },
+    capSb('GET','/cafeteria_menu?select=site,page,imported_at,first_date'),
+    one('/oncall_roster?select=date&source=eq.petal&order=date.desc&limit=1')
+  ]).then(function(r){ capState={loaded:true,err:null,petal:r[0],cardio:r[1],cardThis:r[2],cardNext:r[3],menus:r[4]||[],petalEnd:r[5]}; },
           function(e){ capState.loaded=true; capState.err=e.message; }).then(function(){ capDot(); if(typeof section!=='undefined'&&section==='capture') capPaint(); });
 }
 function capAge(iso){ if(!iso) return null; var d=new Date(iso), t=new Date(); return Math.round((new Date(t.getFullYear(),t.getMonth(),t.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/86400000); }
 function capAgeTxt(n){ return n<=0?'✓ today':'✓ '+n+' d ago'; }
 function capMenuPages(site){ return capState.menus.filter(function(m){ return m.site===site; }).map(function(m){ return +m.page; }).sort(function(a,b){ return a-b; }); }
+var CAP_PETAL_LEFT=14, CAP_MENU_OLD=56;   // remind when the intensivist roster has ≤14 d left · when a site's menu was last checked >8 weeks ago
+function capDue(){ var S=capStatus(); return [S.petal,S.cardio,S.menu].filter(function(x){ return x.ok===false; }).map(function(x){ return x.why||x.txt; }); }
 function capStatus(){   // → {petal:{ok,txt}, cardio:{ok,txt}, menu:{ok,txt}}
   var S={}, s=capState;
   if(!s.loaded){ var w={ok:null,txt:'checking…'}; return {petal:w,cardio:w,menu:w}; }
   if(s.err){ var e={ok:null,txt:'status unavailable'}; return {petal:e,cardio:e,menu:e}; }
-  var pa=capAge(s.petal&&s.petal.imported_at); S.petal=pa==null?{ok:false,txt:'Intensivists: not loaded'}:{ok:pa<=7,txt:capAgeTxt(pa)};
+  var pa=capAge(s.petal&&s.petal.imported_at), left=s.petalEnd?-capAge(s.petalEnd.date+'T12:00:00'):null;
+  if(pa==null) S.petal={ok:false,txt:'Intensivists: not loaded',why:'Intensivist roster not loaded'};
+  else if(left!=null&&left<=CAP_PETAL_LEFT) S.petal={ok:false,txt:left<0?'roster ran out':'runs out '+capShort(s.petalEnd.date),why:'Intensivist roster '+(left<0?'has run out':'runs out in '+left+' d')+' — load PetalMD again'};
+  else S.petal=pa>7?{ok:false,txt:capAgeTxt(pa),why:'Intensivist roster is '+pa+' d old — reload it to pick up swaps'}:{ok:true,txt:capAgeTxt(pa)};
   var th=capMonthRange(0), nx=capMonthRange(1), ca=capAge(s.cardio&&s.cardio.imported_at);
-  if(!s.cardThis) S.cardio={ok:false,txt:'Cardiology: '+th.name.slice(0,3)+' not loaded'};
-  else if(new Date().getDate()>=25&&!s.cardNext) S.cardio={ok:false,txt:'Cardiology: '+nx.name.slice(0,3)+' not loaded'};
+  var dleft=new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()-new Date().getDate();
+  if(!s.cardThis) S.cardio={ok:false,txt:'Cardiology: '+th.name.slice(0,3)+' not loaded',why:'Cardiology '+th.name+' list not loaded'};
+  else if(new Date().getDate()>=25&&!s.cardNext) S.cardio={ok:false,txt:'Cardiology: '+nx.name.slice(0,3)+' not loaded',why:'Cardiology list runs out in '+dleft+' d — download the '+nx.name+' PDF'};
   else S.cardio={ok:true,txt:capAgeTxt(ca==null?0:ca)};
-  var cyc=capCycle(), bits=[], ok=true;
-  CAP_SITES.forEach(function(site){ var n=capMenuPages(site).length, c=cyc[site]; if(!n||(c&&n<c)) ok=false; bits.push(site+' '+n+'/'+(c||'?')+(c&&n>=c?' ✓':(n?' …':''))); });
-  S.menu={ok:ok,txt:bits.join(' · ')}; return S;
+  var cyc=capCycle(), bits=[], ok=true, why=[];
+  CAP_SITES.forEach(function(site){ var n=capMenuPages(site).length, c=cyc[site], ages=s.menus.filter(function(m){ return m.site===site; }).map(function(m){ return capAge(m.imported_at); }), age=ages.length?Math.min.apply(null,ages):null;
+    if(!n){ ok=false; why.push(site+' menu not loaded'); } else if(c&&n<c){ ok=false; why.push(site+' menu: '+n+' of '+c+' weeks loaded'); }
+    else if(age!=null&&age>CAP_MENU_OLD){ ok=false; why.push(site+' menu last checked '+age+' d ago — capture week 1 again to confirm it hasn\'t changed'); }
+    bits.push(site+' '+n+'/'+(c||'?')+(age!=null&&age>CAP_MENU_OLD?' · '+age+' d old':(c&&n>=c?' ✓':(n?' …':'')))); });
+  S.menu={ok:ok,txt:bits.join(' · '),why:why.join(' · ')}; return S;
 }
-function capDot(){ var b=document.getElementById('captab'); if(!b) return; var S=capStatus(), bad=[S.petal,S.cardio,S.menu].some(function(x){ return x.ok===false; });
-  var d=b.querySelector('.capdot'); if(d) d.style.display=bad?'inline-block':'none'; b.title=bad?'Capture — something needs loading':'Capture — on-call lists and menus for Working-Bolt'; }
+var capFlashed=false;
+function capDot(){ var b=document.getElementById('captab'); if(!b) return; var due=capDue(), bad=due.length>0;
+  var d=b.querySelector('.capdot'); if(d){ d.style.display=bad?'inline-block':'none'; d.textContent=bad?due.length:''; }
+  b.title=bad?'Capture — due: '+due.join(' · '):'Capture — on-call lists and menus for Working-Bolt';
+  if(bad&&!capFlashed&&typeof flashMsg==='function'){ capFlashed=true; try{ flashMsg('⏰ Capture due: '+due.join(' · ')); }catch(e){} } }
 
 // ───────────────────────── UI ─────────────────────────
 var CAP_CSS='.capwrap{height:100%;overflow:auto;padding:16px;background:#eef2f8;box-sizing:border-box}.capin{max-width:1180px;margin:0 auto}'
@@ -1055,7 +1111,8 @@ var CAP_CSS='.capwrap{height:100%;overflow:auto;padding:16px;background:#eef2f8;
  +'.capres{font-size:14.5px;margin-top:9px;line-height:1.4}.capres.ok{color:#1e6b2c;font-weight:700}.capres.err{color:#a02020;font-weight:600}.capres.wait{color:#556}.capwarn{color:#8a5200;font-weight:600;font-size:14px;margin-top:4px}'
  +'.capcal{border-collapse:collapse;width:100%;margin:10px 0 4px;table-layout:fixed}.capcal th{font-size:12.5px;color:#667;font-weight:700;padding:2px}.capcal td{border:1px solid #cfd8e6;vertical-align:top;padding:3px 4px;height:46px;font-size:13.5px;line-height:1.25;overflow:hidden;overflow-wrap:anywhere}'
  +'.capcal td b{display:block;font-size:12px;color:#889}.capcal td.miss{background:#fde8e8}.capcal td.off{background:#f4f6f9;border-color:#e4e9f0}'
- +'.capdot{display:none;width:9px;height:9px;border-radius:50%;background:#e08a00;margin-left:6px;vertical-align:middle}';
+ +'.capdot{display:none;min-width:17px;height:17px;line-height:17px;border-radius:9px;background:#e08a00;color:#fff;font-size:12px;font-weight:700;text-align:center;margin-left:6px;vertical-align:middle}'
+ +'.capdue{background:#fff0d0;border:1px solid #e9c46a;color:#6b4300;border-radius:9px;padding:9px 13px;margin:0 0 12px;font-size:15px;font-weight:600}.capdue div{font-weight:500;margin-top:3px}';
 (function(){ if(typeof document==='undefined'||!document.head) return; var st=document.createElement('style'); st.textContent=CAP_CSS; document.head.appendChild(st); })();
 
 function capPetalUrl(){ var t=new Date(); return CAP_PETAL+'?startTime='+capYmd(capAddDays(t,-2))+'&endTime='+capYmd(capAddDays(t,200))+'&layoutId=3373&page=1&perPage=50'; }
@@ -1065,11 +1122,13 @@ function capOpen(url){ window.open(url,'_blank','noopener'); }
 function capResHTML(r){ if(!r) return ''; return '<div class="capres '+r.k+'">'+esc(r.t)+'</div>'+(r.w?'<div class="capwarn">⚠ '+esc(r.w)+'</div>':''); }
 function capStHTML(x){ return '<span class="capst '+(x.ok===true?'g':(x.ok===false?'a':'n'))+'">'+esc(x.txt)+'</span>'; }
 function renderCapture(view){
-  view.innerHTML='<div class="capwrap"><div class="capin"><div class="caphd"><b>Capture</b> — on-call lists and cafeteria menus for Working-Bolt. Staff names and food only: no patient data. Each one is: open the source → copy (or download) → paste (or drop) here.</div><div class="capgrid" id="capgrid"></div></div></div>';
+  view.innerHTML='<div class="capwrap"><div class="capin"><div class="caphd"><b>Capture</b> — on-call lists and cafeteria menus for Working-Bolt. Staff names and food only: no patient data. Each one is: open the source → copy (or download) → paste (or drop) here.</div><div id="capdue"></div><div class="capgrid" id="capgrid"></div></div></div>';
   capPaint(); if(!capBusy.refresh){ capBusy.refresh=1; capRefresh().then(function(){ capBusy.refresh=0; }); }
 }
 function capPaint(){
-  var g=document.getElementById('capgrid'); if(!g) return; var S=capStatus(), th=capMonthRange(0), nx=capMonthRange(1), cyc=capCycle();
+  var g=document.getElementById('capgrid'); if(!g) return; var dueEl=document.getElementById('capdue'), due=capDue();
+  if(dueEl) dueEl.innerHTML=due.length?'<div class="capdue">⏰ Due now'+due.map(function(x){ return '<div>• '+esc(x)+'</div>'; }).join('')+'</div>':'';
+  var S=capStatus(), th=capMonthRange(0), nx=capMonthRange(1), cyc=capCycle();
   var h='<div class="capcard"><h3>Intensivists '+capStHTML(S.petal)+'</h3>'
     +'<button class="capbtn" onclick="capOpen(capPetalUrl())">Open PetalMD ↗</button>'
     +'<div class="capins">Press <b>Ctrl+A, Ctrl+C</b> in the new tab, close it, then <b>Ctrl+V</b> here.</div>'
@@ -1078,7 +1137,7 @@ function capPaint(){
     +'<button class="capbtn" onclick="capOpen(capCardUrl(0))">Open '+esc(th.name)+' ↗</button><button class="capbtn s" onclick="capOpen(capCardUrl(1))">Open '+esc(nx.name)+' ↗</button>'
     +'<div class="capins"><b>Download</b> the PDF (download icon in the viewer) and <b>drag it here</b>, or click to pick the file.</div>'
     +'<div class="capzone" tabindex="0" id="capdrop" onclick="document.getElementById(\'capfile\').click()">Drop the PDF here · or click to choose</div>'
-    +'<input type="file" id="capfile" accept="application/pdf,.pdf" style="display:none" onchange="if(this.files[0])capCardioFile(this.files[0]);this.value=\'\'">'
+    +'<input type="file" id="capfile" accept="application/pdf,.pdf" style="display:none" onchange="if(this.files[0])capFiles(this.files);this.value=\'\'">'
     +capResHTML(capRes.cardio)+capCardioPreview()+'</div>';
   h+='<div class="capcard"><h3>Cafeteria '+capStHTML(S.menu)+'</h3>';
   CAP_SITES.forEach(function(site){ var have=capMenuPages(site), mx=have.length?have[have.length-1]:0, n=cyc[site]||Math.max(4,mx+1);
@@ -1087,12 +1146,14 @@ function capPaint(){
       h+='<button class="capbtn '+(on?'on':(have.indexOf(p)>=0?'ok':'s'))+'" title="'+(have.indexOf(p)>=0?'Captured — click to capture it again':'Open this page and capture it')+'" onclick="capMenuOpen(\''+site+'\','+p+')">'+p+(have.indexOf(p)>=0?' ✓':'')+'</button>'; }
     if(!cyc[site]&&mx) h+='<button class="capbtn s" title="Use this when the next page does not exist: the cycle is the pages captured so far" onclick="capSetCycle(\''+site+'\','+mx+');capPaint();capDot()">No more pages</button>';
     else if(cyc[site]) h+='<button class="capbtn s" title="Forget the cycle length (the menu changed)" onclick="capSetCycle(\''+site+'\',0);capPaint();capDot()">↺</button>'; });
-  h+='<div class="capins">'+(capPending?'Capturing <b>'+capPending.site+' week '+capPending.page+'</b>: ':'Click a week to open it, then: ')+'<b>Ctrl+A, Ctrl+C</b> on the menu page, then <b>Ctrl+V</b> here.</div>'
-    +'<div class="capzone" tabindex="0">Paste here (Ctrl+V)</div>'+capResHTML(capRes.menu)
+  h+='<div class="capins">'+(capPending?'Capturing <b>'+capPending.site+' week '+capPending.page+'</b>: ':'Click a week to open it, then: ')+'<b>Ctrl+A, Ctrl+C</b> on the menu page, then <b>Ctrl+V</b> here. <b>Or drop the menu PDFs</b> (several at once is fine).</div>'
+    +'<div class="capzone" tabindex="0" id="capmdrop" onclick="document.getElementById(\'capmfile\').click()">Paste here (Ctrl+V) · or drop / click to choose PDFs</div>'
+    +'<input type="file" id="capmfile" accept="application/pdf,.pdf" multiple style="display:none" onchange="if(this.files.length)capFiles(this.files);this.value=\'\'">'
+    +capResHTML(capRes.menu)
     +(capRes.menu&&capRes.menu.next?'<button class="capbtn" onclick="capMenuOpen(\''+capRes.menu.next.site+'\','+capRes.menu.next.page+')">Next page: '+capRes.menu.next.site+' week '+capRes.menu.next.page+' ↗</button>':'')+'</div>';
   if(capState.err) h+='<div class="capcard"><div class="capres err">Status could not be read: '+esc(capState.err)+'</div></div>';
   g.innerHTML=h;
-  var dz=document.getElementById('capdrop'); if(dz){ dz.ondragover=function(e){ e.preventDefault(); dz.classList.add('over'); }; dz.ondragleave=function(){ dz.classList.remove('over'); }; }
+  ['capdrop','capmdrop'].forEach(function(id){ var dz=document.getElementById(id); if(dz){ dz.ondragover=function(e){ e.preventDefault(); dz.classList.add('over'); }; dz.ondragleave=function(){ dz.classList.remove('over'); }; } });
 }
 function capSet(k,res){ capRes[k]=res; capPaint(); }
 
@@ -1105,7 +1166,7 @@ function capOnPaste(e){ if(typeof section==='undefined'||section!=='capture') re
   if(/^\s*%PDF/.test(text)) return capSet('cardio',{k:'err',t:'Copy/paste doesn\'t work for the cardiology list — download the PDF and drag the file here.'});
   capMenuPaste(html,text); }
 function capOnDrop(e){ if(typeof section==='undefined'||section!=='capture') return; e.preventDefault(); e.stopPropagation();
-  var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) capCardioFile(f); }
+  var fs=e.dataTransfer&&e.dataTransfer.files; if(fs&&fs.length) capFiles(fs); }
 (function(){ if(typeof document==='undefined'||!document.addEventListener) return;
   document.addEventListener('paste',capOnPaste,true); document.addEventListener('drop',capOnDrop,true);
   document.addEventListener('dragover',function(e){ if(typeof section!=='undefined'&&section==='capture') e.preventDefault(); },true); })();
@@ -1122,14 +1183,41 @@ function capLoadPdfjs(){ if(window.pdfjsLib) return Promise.resolve(window.pdfjs
     s.onerror=function(){ no(new Error('x')); }; document.head.appendChild(s); })
     .catch(function(){ throw new Error('Couldn\'t load the PDF reader (cdnjs.cloudflare.com is blocked on this PC?) — try another browser or PC.'); }); }
 function capPdfItems(buf){ return capLoadPdfjs().then(function(lib){ return lib.getDocument({data:buf}).promise.then(function(pdf){
-    return pdf.getPage(1).then(function(page){ var vp=page.getViewport({scale:1});
-      return page.getTextContent().then(function(tc){ return tc.items.map(function(it){ var t=lib.Util.transform(vp.transform,it.transform), h=Math.hypot(t[2],t[3])||it.height||8;
-        return {str:it.str,x:t[4],y:t[5],w:it.width||0,h:h}; }); }); }); }); }); }
-function capCardioFile(file){ capCardio=null;
-  if(!/\.pdf$/i.test(file.name||'')&&file.type!=='application/pdf') return capSet('cardio',{k:'err',t:'That isn\'t a PDF — download the on-call PDF from the viewer and drop that file.'});
-  capSet('cardio',{k:'wait',t:'Reading the PDF…'});
-  file.arrayBuffer().then(capPdfItems).then(function(items){
-    if(!items.length) throw new Error('The PDF has no text in it (a scanned image?) — it can\'t be read automatically.');
+    var out=[], off=0, n=Math.min(pdf.numPages,6), go=function(i){ if(i>n) return out;
+      return pdf.getPage(i).then(function(page){ var vp=page.getViewport({scale:1});
+        return page.getTextContent().then(function(tc){ tc.items.forEach(function(it){ var t=lib.Util.transform(vp.transform,it.transform), h=Math.hypot(t[2],t[3])||it.height||8;
+          out.push({str:it.str,x:t[4],y:t[5]+off,w:it.width||0,h:h}); }); off+=vp.height; return go(i+1); }); }); };
+    return go(1); }); }); }
+// dropped / chosen files: each PDF is read, then routed by CONTENT — a menu ("Daily Specials" / day blocks) or the cardiology calendar
+function capFiles(fileList){ var files=Array.prototype.slice.call(fileList), menus=[], errs=[], i=0, card=null;
+  var bad=files.filter(function(f){ return !/\.pdf$/i.test(f.name||'')&&f.type!=='application/pdf'; });
+  if(bad.length) return capSet(capPending?'menu':'cardio',{k:'err',t:'That isn\'t a PDF — drop the PDF file(s) here.'});
+  capSet(files.length>1||capPending?'menu':'cardio',{k:'wait',t:'Reading the PDF'+(files.length>1?'s':'')+'…'});
+  function next(){ if(i>=files.length) return Promise.resolve(); var f=files[i++];
+    return f.arrayBuffer().then(capPdfItems).then(function(items){
+      if(!items.length) throw new Error('"'+f.name+'" has no text in it (a scanned image?) — it can\'t be read automatically.');
+      var txt=items.map(function(x){ return x.str; }).join(' ');
+      if(/Daily\s+Specials/i.test(txt)||(txt.match(/\b(SUN|MON|TUES|WEDNES|THURS|FRI|SATUR)DAY\s*,/gi)||[]).length>=5){
+        var P=capParseMenuRows(capPdfMenuRows(items),new Date()), hm=(f.name||'').match(/(?:RGH|PH)\s*[-_ ]?(?:week|wk)?\s*[-_ ]?(\d{1,2})(?!\d)/i);
+        var site=P.site||(capPending&&capPending.site); if(!site) throw new Error('Can\'t tell if "'+f.name+'" is RGH or PH — click the week button first, then drop it again.');
+        menus.push({P:P,site:site,first_date:P.first_date,hint:hm?+hm[1]:(capPending&&capPending.site===site&&files.length===1?capPending.page:null),file:f.name}); }
+      else card=items; }).catch(function(e){ errs.push(e.message||String(e)); }).then(next); }
+  next().then(function(){
+    if(card) capCardioItems(card); else if(!menus.length) return capSet(capPending||files.length>1?'menu':'cardio',{k:'err',t:errs.join(' · ')||'Nothing readable in that file.'});
+    if(!menus.length){ if(capRes.menu&&capRes.menu.k==='wait') capSet('menu',errs.length?{k:'err',t:errs.join(' · ')}:null); return; }
+    var w1={}; capState.menus.forEach(function(m){ if(+m.page===1&&m.first_date) w1[m.site]=String(m.first_date).slice(0,10); });
+    if(!card&&!capCardio&&capRes.cardio&&capRes.cardio.k==='wait') capRes.cardio=null;
+    capAssignPages(menus,w1); menus.sort(function(a,b){ return a.site<b.site?-1:(a.site>b.site?1:(a.page||99)-(b.page||99)); });
+    var msgs=[], warn=[], k=0, last=null;
+    function up(){ if(k>=menus.length) return Promise.resolve(); var m=menus[k++]; if(m.err){ errs.push(m.err); return up(); }
+      return capMenuCommit(m.P,m.site,m.page).then(function(r){ msgs.push(r.t); if(r.w) warn.push(r.w); last=r; },function(e){ errs.push(e.message); }).then(up); }
+    capSet('menu',{k:'wait',t:'Uploading '+menus.length+' menu'+(menus.length>1?'s':'')+'…'});
+    return up().then(function(){ capPending=null;
+      capSet('menu',msgs.length?{k:'ok',t:msgs.join('  ·  '),w:warn.concat(errs).join(' · '),next:menus.length===1&&last?last.next:null}:{k:'err',t:errs.join(' · ')}); return capRefresh(); }); })
+  .catch(function(e){ capSet('menu',{k:'err',t:e.message||String(e)}); }); }
+function capCardioFile(file){ capFiles([file]); }
+function capCardioItems(items){ capCardio=null;
+  Promise.resolve().then(function(){
     var P=capParseCardio(items,new Date().toISOString());
     if(P.missing.length){ capCardio={P:P,blocked:true}; return capSet('cardio',{k:'err',t:'Couldn\'t read the PDF cleanly — '+P.missing.length+' day'+(P.missing.length>1?'s':'')+' missing ('+P.missing.slice(0,12).join(', ')+(P.missing.length>12?'…':'')+'). Nothing was uploaded.'}); }
     capCardio={P:P}; capSet('cardio',{k:'wait',t:CAP_MONTHS[P.month]+' '+P.year+' read — check it against the PDF, then upload.',w:P.unknown.length?'initials not in the legend, kept as written: '+P.unknown.join(', '):''}); })
@@ -1154,13 +1242,14 @@ function capMenuPaste(html,text){ var P;
   }catch(e){ return capSet('menu',{k:'err',t:e.message}); }
   if(P.site&&P.site!==site) return capSet('menu',{k:'err',t:'That page says "Daily Specials '+P.site+'" but you were capturing '+site+' week '+page+' — click the right week button and paste again. Nothing was uploaded.'});
   capSet('menu',{k:'wait',t:'Checking '+site+' week '+page+'…'});
+  capMenuCommit(P,site,page).then(function(r){ capPending=null; capSet('menu',r); return capRefresh(); }).catch(function(e){ capSet('menu',{k:'err',t:e.message}); }); }
+function capMenuCommit(P,site,page){   // → result line {k,t,w,next}; a page identical to week 1 closes the cycle and is not stored
   var chk=page>1?capSb('GET','/cafeteria_menu?select=days&site=eq.'+site+'&page=eq.1').then(function(r){ return r&&r[0]?r[0].days:null; }):Promise.resolve(null);
-  chk.then(function(w1){
-    if(w1&&capMenuSig(w1)===capMenuSig(P.days)){ capSetCycle(site,page-1); capPending=null; capSet('menu',{k:'ok',t:'✓ '+site+' cycle = '+(page-1)+' weeks (this page repeats week 1 — not stored)'}); return capRefresh(); }
+  return chk.then(function(w1){
+    if(w1&&capMenuSig(w1)===capMenuSig(P.days)){ capSetCycle(site,page-1); return {k:'ok',t:'✓ '+site+' cycle = '+(page-1)+' weeks (this page repeats week 1 — not stored)'}; }
     return capUpsert('cafeteria_menu','site,page',[{site:site,page:page,first_date:P.first_date,days:P.days,imported_at:new Date().toISOString()}]).then(function(){
-      var cyc=capCycle()[site]; capPending=null;
-      capSet('menu',{k:'ok',t:'✓ '+site+' week '+page+' — '+capShort(P.first_date)+' → '+capShort(P.days[6].date)+', '+P.items+' dishes',w:P.warn.join(' · '),next:(cyc&&page>=cyc)?null:{site:site,page:page+1}}); return capRefresh(); }); })
-  .catch(function(e){ capSet('menu',{k:'err',t:e.message}); }); }
+      var cyc=capCycle()[site];
+      return {k:'ok',t:'✓ '+site+' week '+page+' — '+capShort(P.first_date)+' → '+capShort(P.days[6].date)+', '+P.items+' dishes',w:P.warn.join(' · '),next:(cyc&&page>=cyc)?null:{site:site,page:page+1}}; }); }); }
 </script>
 <script>
 // ---- embedded tools (base64, injected per bed / for handover) ----
