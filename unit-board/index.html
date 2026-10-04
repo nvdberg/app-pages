@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.36 · 03-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.37 · 04-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -123,6 +123,7 @@
     <button data-sec="park" onclick="showSec('park')">🅿️ Park</button>
     <button data-sec="reference" onclick="showSec('reference')">📖 Reference</button>
     <button data-sec="prompts" onclick="showSec('prompts')">Prompts</button>
+    <button data-sec="capture" id="captab" onclick="showSec('capture')" title="Capture — on-call lists and menus for Working-Bolt">Capture<span class="capdot"></span></button>
     <button data-sec="angela" id="angtab" onclick="showSec('angela')" hidden>🔬 Angela</button>
     <span class="setwrap">
       <button class="setbtn" id="setbtn" onclick="toggleSettings()" title="Settings — text size, Angela view">⚙</button>
@@ -744,7 +745,7 @@ function hvUnitCfg(boardUnit){
 function normHvCard(c, overnight){
   c=c||{};
   var ovn=hvClean(overnight||c.overnight);
-  var bed={ pt:hvClean(c.pt), goc:c.goc||'goc-uk', alert:!!c.alert, tags:(c.tags||[]).slice(0,3), reason:hvClean(c.reason_for_icu),
+  var bed={ pt:hvClean(c.pt), goc:c.goc||hvGocClass(c.goc_status||c.goc_text), alert:!!c.alert, tags:(c.tags||[]).slice(0,3), reason:hvClean(c.reason_for_icu),
     admit:hvClean(c.admit), event:hvClean(c.event), overnight:ovn, dx:hvClean(c.dx),
     pmhx:hvClean(c.pmhx), tx:hvClean(c.tx), goc_text:hvClean(c.goc_text), plan:hvPlanStr(c.plan) };
   if(ovn) bed._ovn_show=true;
@@ -799,6 +800,367 @@ function buildHandoverD(boardUnit, bedsMap, uncap){
   }
   return {unit:cfg.tool, beds:beds};
 }
+</script>
+<script>// ============================================================================================================
+// capture.js — the board's "Capture" tab (v2.37, 4-Oct-2026)
+// The hospital PC is the only place three sources can be reached (PetalMD on-call, the cardiology on-call PDF,
+// the cafeteria menu pages). The board can never fetch them (no CORS, http intranet), so every capture is a
+// hand-off: open the source in a new tab → copy / download → paste / drop here → parsed → upserted to Supabase,
+// where the Working-Bolt app reads them. The board does not display the data and keeps NO raw paste or file.
+// Staff names + food only — no patient data. No person's name is hard-coded: everything is parsed at runtime.
+// The parsers (capParse*) are pure, so they are tested offline in node.
+// ============================================================================================================
+var CAP_SB='https://qbtnxkzpddexczhcvxre.supabase.co/rest/v1';
+var CAP_KEY='sb_publishable_uqqWXuhGAPqd85yXC4rLsA_q7RX1zAQ';   // publishable key — public by design
+var CAP_PETAL='https://console.petal-health.com/api/v3.1/hospitals/13354/dashboards/console_layout_rows';
+var CAP_INTRA='http://rqhintranet.rqhealth.ca';
+var CAP_PDFJS='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+var CAP_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+var CAP_WD=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+var CAP_SITES=['RGH','PH'];
+
+function capYmd(d){ return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2); }
+function capAddDays(d,n){ var x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()+n); return x; }
+function capFromYmd(s){ var a=String(s).slice(0,10).split('-'); return new Date(+a[0],+a[1]-1,+a[2]); }
+function capShort(s){ var d=capFromYmd(s); return CAP_MONTHS[d.getMonth()].slice(0,3)+' '+d.getDate(); }
+function capMonthIx(name){ var n=String(name||'').toLowerCase().slice(0,3); for(var i=0;i<12;i++){ if(CAP_MONTHS[i].toLowerCase().slice(0,3)===n) return i; } return -1; }
+
+// ───────────────────────── 1 · INTENSIVISTS (PetalMD JSON) ─────────────────────────
+function capPetalName(a){
+  var acc=(a&&a.account)||{}, tr=a&&a.temporaryReplacements;
+  if(tr&&tr.length){ acc=tr[0].account||tr[0]||acc; }
+  var n=String(acc.lastName||'').replace(/^\s*dr\.?\s+/i,'').trim();
+  return n||null;
+}
+function capParsePetal(text, nowIso){
+  var t=String(text||''), a=t.indexOf('['), b=t.lastIndexOf(']'), data=null;
+  if(a>=0&&b<=a&&/requirementsPerDay/.test(t)) throw new Error('The copy was cut short (not complete JSON) — go back to the PetalMD tab, press Ctrl+A then Ctrl+C again.');
+  if(a<0||b<=a) throw new Error('That doesn\'t look like the PetalMD page — in the new tab press Ctrl+A, Ctrl+C, then Ctrl+V here.');
+  try{ data=JSON.parse(t.slice(a,b+1)); }catch(e){ try{ data=JSON.parse(t); }catch(e2){ throw new Error('The copy was cut short (not complete JSON) — go back to the PetalMD tab, press Ctrl+A then Ctrl+C again.'); } }
+  if(!Array.isArray(data)){ var k=Object.keys(data||{}).filter(function(x){ return Array.isArray(data[x]); })[0]; data=k?data[k]:[]; }
+  var map={}, order=[], used=0;
+  data.forEach(function(row){ if(!row||!row.requirementsPerDay) return; var lab=String(row.label||'');
+    var unit=/pasqua/i.test(lab)?'PHICU':(/sicu/i.test(lab)?'SICU':(/micu/i.test(lab)?'MICU':null)); if(!unit) return;
+    var role=/^\s*on[\s-]?call/i.test(lab)?'oncall':'day'; used++;
+    Object.keys(row.requirementsPerDay).forEach(function(date){ if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      var names=[]; (row.requirementsPerDay[date]||[]).forEach(function(rq){ ((rq&&rq.assignments)||[]).forEach(function(as){ var n=capPetalName(as); if(n&&names.indexOf(n)<0) names.push(n); }); });
+      var key=date+'|'+unit+'|'+role;
+      if(!map[key]){ map[key]={date:date,unit:unit,role:role,names:[]}; order.push(key); }
+      names.forEach(function(n){ if(map[key].names.indexOf(n)<0) map[key].names.push(n); }); }); });
+  if(!used) throw new Error('No SICU / MICU / Pasqua ICU rows in that paste — is it the PetalMD on-call page? Use the Open button, then Ctrl+A, Ctrl+C.');
+  var rows=order.map(function(k){ var m=map[k]; return {date:m.date,unit:m.unit,role:m.role,name:m.names.length?m.names.join(' / '):null,source:'petal',imported_at:nowIso}; });
+  rows.sort(function(x,y){ return x.date<y.date?-1:(x.date>y.date?1:0); });
+  if(!rows.length) throw new Error('The PetalMD page had no dates in it — reload it and copy again.');
+  return {rows:rows, from:rows[0].date, to:rows[rows.length-1].date, labels:used};
+}
+
+// ───────────────────────── 2 · CARDIOLOGY (PDF text items with x/y) ─────────────────────────
+// items: [{str,x,y,w,h}] with y measured from the TOP of the page. Layers are told apart by CONTENT, not colour.
+function capLines(items){   // cluster items into text lines (similar y), each sorted by x
+  var its=items.filter(function(i){ return i&&String(i.str).trim(); }).slice().sort(function(a,b){ return a.y-b.y||a.x-b.x; }), lines=[];
+  its.forEach(function(it){ var tol=Math.max(2.5,(it.h||8)*0.45), L=null;
+    for(var i=lines.length-1;i>=0&&i>=lines.length-6;i--){ if(Math.abs(lines[i].y-it.y)<=tol){ L=lines[i]; break; } }
+    if(!L){ L={y:it.y,items:[]}; lines.push(L); } L.items.push(it); });
+  lines.forEach(function(L){ L.items.sort(function(a,b){ return a.x-b.x; }); var s='', end=null;
+    L.items.forEach(function(it){ var gap=end==null?0:it.x-end; if(end!=null&&gap>Math.max(1,(it.h||8)*0.18)&&!/\s$/.test(s)&&!/^\s/.test(it.str)) s+=' '; s+=it.str; end=it.x+(it.w||0); });
+    L.text=s.replace(/\s+/g,' ').trim(); L.x=L.items[0].x; });
+  return lines.sort(function(a,b){ return a.y-b.y; });
+}
+function capParseCardio(items, nowIso){
+  var all=capLines(items), txt=all.map(function(l){ return l.text; }).join('\n');
+  // month + year: the title ("OCTOBER 2026"), else the "Month 10 / Year 2026" boxes
+  var mi=-1, yr=0, m=txt.match(/\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(20\d{2})\b/i);
+  if(m){ mi=capMonthIx(m[1]); yr=+m[2]; }
+  else { var mm=txt.match(/\bMonth\b\D{0,12}(\d{1,2})\b/i), yy=txt.match(/\bYear\b\D{0,12}(20\d{2})\b/i); if(mm&&yy){ mi=+mm[1]-1; yr=+yy[1]; } }
+  if(mi<0||mi>11||!yr) throw new Error('Couldn\'t find the month and year on that PDF — is it the cardiology on-call calendar?');
+  var last=new Date(yr,mi+1,0).getDate(), fw=new Date(yr,mi,1).getDay();
+  // weekday headers → 7 column x-ranges
+  var hd=items.filter(function(i){ return /^\s*(sun|mon|tue|wed|thu|fri|sat)[a-z]*\.?\s*$/i.test(i.str); }), best=null;
+  hd.forEach(function(h0){ var row=hd.filter(function(h){ return Math.abs(h.y-h0.y)<=Math.max(3,(h0.h||8)*0.6); }).sort(function(a,b){ return a.x-b.x; });
+    var seq=row.map(function(h){ return h.str.trim().toLowerCase().slice(0,3); }).join(',');
+    if(seq==='sun,mon,tue,wed,thu,fri,sat') best=row; });
+  if(!best) throw new Error('Couldn\'t find the Sunday … Saturday header row — is this the month calendar PDF?');
+  var cx=best.map(function(h){ return h.x+(h.w||0)/2; }), sp=(cx[6]-cx[0])/6, left=cx.map(function(c){ return c-sp/2; }), hy=best[0].y;
+  var colOf=function(x){ var c=Math.floor((x+sp*0.04-left[0])/sp); return (c<0||c>6)?-1:c; };
+  // legend: "AA – Dr. A. Surname" (dashes vary) → initials map
+  var legend={}, lg=/\b([A-Z]{2,3})\s*[-–—−]+\s*Dr\.?\s*((?:[A-Z]\.?\s+)*)([A-Z][A-Za-z'’\-]+(?:\s+(?!(?:[A-Z]{2,3})\s*[-–—−])[A-Z][a-z'’\-]+)?)/g, g;
+  var legY=Infinity;
+  all.forEach(function(l){ lg.lastIndex=0; while((g=lg.exec(l.text))){ legend[g[1]]=g[3].trim(); if(l.y<legY) legY=l.y; } });
+  var ex=function(s){ if(!s) return null; return s.split(/\s*[\/,&+]\s*/).map(function(p){ p=p.trim(); return legend[p]||p; }).filter(Boolean).join(' / ')||null; };
+  // per column: text lines; a line starting with the expected day number opens that day's cell
+  var days={}, unknown={};
+  for(var c=0;c<7;c++){
+    var ci=items.filter(function(i){ return i.y>hy+2&&i.y<legY-1&&colOf(i.x)===c; }), ls=capLines(ci), marks=[];
+    var exp=[]; for(var n=((c-fw+7)%7)+1;n<=last;n+=7) exp.push(n);
+    ls.forEach(function(l,ix){ var dm=l.text.match(/^(\d{1,2})(?=\s|$)(?!\s*-)/); if(!dm) return; var dn=+dm[1];
+      if(l.x-left[c]>sp*0.45) return;                       // a day number sits at the cell's left
+      marks.push({ix:ix,n:dn,y:l.y,ok:exp.indexOf(dn)>=0}); });
+    // previous-month spill-over sits in the first row, next-month in the last: keep the expected numbers in rising order
+    // (a spill-over number can equal one of this column's own dates, e.g. Feb 23 above Mar 2…23 — so take the longest rising run, top to bottom)
+    var okm=marks.filter(function(mk){ return mk.ok; }), bestLen=[], prev=[], bi=-1;
+    okm.forEach(function(mk,i){ bestLen[i]=1; prev[i]=-1; for(var j=0;j<i;j++){ if(okm[j].n<mk.n&&bestLen[j]+1>bestLen[i]){ bestLen[i]=bestLen[j]+1; prev[i]=j; } } if(bi<0||bestLen[i]>bestLen[bi]) bi=i; });
+    var keep=[]; while(bi>=0){ keep.unshift(okm[bi]); bi=prev[bi]; }
+    var gaps=[]; for(var q=1;q<marks.length;q++) gaps.push(marks[q].y-marks[q-1].y); gaps.sort(function(a,b){return a-b;}); var rowH=gaps.length?gaps[Math.floor(gaps.length/2)]:9999;
+    keep.forEach(function(mk){ var nx=marks.filter(function(o){ return o.y>mk.y+1; })[0], yEnd=nx?nx.y-1:mk.y+rowH-1;
+      var cell=ls.filter(function(l){ return l.y>=mk.y-1&&l.y<yEnd; }), st=[], oc=[], cons=null;
+      cell.forEach(function(l,li){ var t=l.text; if(li===0) t=t.replace(/^\d{1,2}\s*/,'');
+        var cm=t.match(/8\s*[-–]\s*5\s*Consults?\s*:?\s*(.*)$/i);
+        if(cm){ cons=(cm[1]||'').replace(/\bSTAT\b/g,'').trim()||cons; t=t.slice(0,cm.index); }
+        else if(cons===''&&/^[A-Z]{2,3}$/.test(t.trim())){ cons=t.trim(); return; }
+        if(cm&&!cons) cons='';
+        t=t.replace(/\bSTAT\b/g,' ').trim(); if(!t||/\bDr\.?\s/.test(t)) return;
+        var qm=t.match(/\b(before|after|until|from)\b/i), q=qm?(/before|until/i.test(qm[1])?'before':'after'):null;
+        var who=t.replace(/\b(before|after|until|from)\b.*$/i,'').replace(/\b\d{3,4}\s*h?\b/g,'').replace(/[:;,.\s]+$/,'').trim();
+        if(!who){ var lastE=oc.length&&!oc[oc.length-1].q?oc[oc.length-1]:(st.length&&!st[st.length-1].q?st[st.length-1]:null); if(lastE&&q) lastE.q=q; return; }
+        if(/^[A-Z]{2,3}(\s*[\/&]\s*[A-Z]{2,3})*$/.test(who)){ st.push({who:who,q:q}); who.split(/\s*[\/&]\s*/).forEach(function(i2){ if(!legend[i2]) unknown[i2]=1; }); }
+        else if(/[a-z]/.test(who)&&/^[A-Za-z][A-Za-z'’.\- \/]+$/.test(who)) oc.push({who:who,q:q}); });
+      var pick=function(arr){ if(!arr.length) return [null,null]; var b4=arr.filter(function(e){return e.q==='before';})[0], af=arr.filter(function(e){return e.q==='after';})[0];
+        if(b4||af){ var d1=(b4||arr.filter(function(e){return e!==af;})[0]||af).who, n1=(af||arr.filter(function(e){return e!==b4;})[0]||b4).who; return [d1,n1]; }
+        return [arr[0].who, arr.length>1?arr[1].who:arr[0].who]; };
+      var o=pick(oc), s2=pick(st);
+      days[mk.n]={day:o[0],oncall:o[1],stemi_day:ex(s2[0]),stemi_oncall:ex(s2[1]),consults:ex(cons)}; });
+  }
+  var missing=[]; for(var d=1;d<=last;d++){ if(!days[d]||!days[d].day||!days[d].oncall) missing.push(d); }
+  var rows=[]; for(var d2=1;d2<=last;d2++){ var dd=days[d2]||{}, date=yr+'-'+('0'+(mi+1)).slice(-2)+'-'+('0'+d2).slice(-2);
+    ['day','oncall','stemi_day','stemi_oncall','consults'].forEach(function(r){ rows.push({date:date,unit:'CCU',role:r,name:dd[r]||null,source:'cardiology-pdf',imported_at:nowIso}); }); }
+  return {year:yr, month:mi, last:last, fw:fw, days:days, rows:rows, missing:missing, unknown:Object.keys(unknown), legendN:Object.keys(legend).length};
+}
+
+// ───────────────────────── 3 · CAFETERIA MENUS (rows of cells of lines) ─────────────────────────
+var CAP_DAYRX=/^\s*(SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY)\s*,?\s+([A-Za-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?\b/i;
+var CAP_PRX=/((?:\b(?:sm|lg|small|large|med|md|reg)\b\.?\s*[-–:]?\s*)?\$\s*\d)/i;
+function capClean(s){ return String(s||'').replace(/[   ]/g,' ').replace(/\s+/g,' ').trim(); }
+function capPrice(s){ return capClean(s).replace(/\s*[-–]\s*\$/g,' - $').replace(/\$\s+/g,'$').replace(/\s+/g,' ').trim(); }
+function capHtmlRows(html){   // pasted text/html → rows of cells of lines (keeps the table structure)
+  var doc=new DOMParser().parseFromString(String(html||''),'text/html'), rows=[], loose=[''];
+  var BLOCK=/^(P|DIV|BR|LI|UL|OL|H[1-6]|TABLE|TBODY|THEAD|TR|TD|TH|CENTER|SECTION|ARTICLE|HEADER|BLOCKQUOTE)$/;
+  function lines(node,acc){ node.childNodes.forEach(function(ch){ if(ch.nodeType===3){ acc[acc.length-1]+=ch.nodeValue; }
+      else if(ch.nodeType===1){ if(/^(SCRIPT|STYLE)$/.test(ch.tagName)) return; var blk=BLOCK.test(ch.tagName); if(blk&&acc[acc.length-1].trim()) acc.push(''); lines(ch,acc); if(blk&&acc[acc.length-1].trim()) acc.push(''); } }); return acc; }
+  function flush(){ loose.map(capClean).filter(Boolean).forEach(function(l){ rows.push([[l]]); }); loose=['']; }
+  function walk(node){ node.childNodes.forEach(function(ch){
+    if(ch.nodeType===3){ loose[loose.length-1]+=ch.nodeValue; return; } if(ch.nodeType!==1||/^(SCRIPT|STYLE|HEAD|TITLE)$/.test(ch.tagName)) return;
+    if(ch.tagName==='TR'&&!ch.querySelector('table')){ flush(); var cells=[]; Array.prototype.forEach.call(ch.children,function(td){ if(/^(TD|TH)$/.test(td.tagName)) cells.push(lines(td,['']).map(capClean).filter(Boolean)); }); rows.push(cells); return; }
+    if(BLOCK.test(ch.tagName)) flush(); walk(ch); if(BLOCK.test(ch.tagName)) flush(); }); }
+  walk(doc.body||doc); flush(); return rows;
+}
+function capTextRows(text){ return String(text||'').split(/\r?\n/).map(function(l){ return l.split('\t').map(function(c){ c=capClean(c); return c?[c]:[]; }); }).filter(function(r){ return r.some(function(c){ return c.length; }); }); }
+function capCellItems(lines, into){   // a cell's lines → [{name,price}] ; a name can wrap over 2–3 lines before its price
+  var name=[], out=[];
+  lines.forEach(function(l){ var m=l.match(CAP_PRX);
+    if(m){ var nm=capClean(l.slice(0,m.index)); if(nm) name.push(nm); var pr=capPrice(l.slice(m.index));
+      if(!name.length){ var prev=out[out.length-1]||into[into.length-1]; if(prev&&!prev.price){ prev.price=pr; return; } }
+      out.push({name:name.join(' '),price:pr}); name=[]; }
+    else name.push(l); });
+  if(name.length){ var rest=name.join(' '), pv=out[out.length-1];
+    if(pv&&/^([a-z(&]|with\b|and\b|or\b)/.test(rest)) pv.name=capClean(pv.name+' '+rest); else out.push({name:rest,price:null}); }
+  out.forEach(function(i){ into.push(i); });
+}
+function capMenuDate(wdIx, mIx, day, today){   // nearest date to today matching weekday + month + day
+  var best=null, y0=today.getFullYear();
+  [y0-1,y0,y0+1].forEach(function(y){ var d=new Date(y,mIx,day); if(d.getMonth()!==mIx||d.getDay()!==wdIx) return; if(!best||Math.abs(d-today)<Math.abs(best-today)) best=d; });
+  return best;
+}
+function capParseMenuRows(rows, today){
+  var days=[], cur=null, sec=null, site=null, warn=[];
+  rows.forEach(function(r){ var flat=r.map(function(c){ return c.join(' '); }), joined=capClean(flat.join(' ')); if(!joined) return;
+    var sm=joined.match(/Daily\s+Specials\s+([A-Za-z]+)/i); if(sm&&!cur){ site=/^p/i.test(sm[1])?'PH':(/^r/i.test(sm[1])?'RGH':sm[1].toUpperCase()); return; }
+    var hits=[]; r.forEach(function(c){ c.forEach(function(l){ var m=l.match(CAP_DAYRX); if(m) hits.push(m); }); });
+    if(hits.length>1) throw new Error('This menu page is laid out differently (two days in one row) — tell Claude, the parser needs a tweak.');
+    if(hits.length){ var m=hits[0], wd=CAP_WD.map(function(w){return w.toUpperCase();}).indexOf(m[1].toUpperCase()), mi=capMonthIx(m[2]), dn=+m[3];
+      if(mi<0) throw new Error('Couldn\'t read the date "'+capClean(m[0])+'" on the menu.');
+      var dt=capMenuDate(wd,mi,dn,today); if(!dt){ dt=new Date(today.getFullYear(),mi,dn); warn.push(CAP_WD[wd]+' '+CAP_MONTHS[mi]+' '+dn+' is not a '+CAP_WD[wd]+' in any nearby year'); }
+      cur={date:capYmd(dt),weekday:CAP_WD[wd],sections:[]}; sec=null; days.push(cur); return; }
+    if(!cur) return;
+    var cells=r.filter(function(c,ix){ return ix===0||c.length; }), first=r[0]||[], others=r.slice(1).filter(function(c){ return c.length; });
+    var firstTxt=first.join(' '), firstIsLabel=first.length&&!/\$/.test(firstTxt);
+    if(firstIsLabel&&(others.length||r.length>1||(sec===null)||firstTxt.length<=28&&!(sec&&sec.items.length&&!sec.items[sec.items.length-1].price))){
+      sec={label:capClean(firstTxt),items:[]}; cur.sections.push(sec); others.forEach(function(c){ capCellItems(c,sec.items); }); return; }
+    if(!sec){ sec={label:'',items:[]}; cur.sections.push(sec); }
+    (first.length?[first]:[]).concat(others).forEach(function(c){
+      if(c.length&&!/\$/.test(c.join(' '))&&sec.items.length&&!sec.items[sec.items.length-1].price){ sec.items[sec.items.length-1].name=capClean(sec.items[sec.items.length-1].name+' '+c.join(' ')); return; }
+      capCellItems(c,sec.items); }); });
+  days.forEach(function(d){ d.sections=d.sections.filter(function(s){ return s.items.length; }); });
+  if(!days.length) throw new Error('No menu days found in that paste — on the menu page press Ctrl+A, Ctrl+C, then Ctrl+V here.');
+  if(days.length!==7) throw new Error('Found '+days.length+' of 7 days on that page — make sure the whole page was selected (Ctrl+A) before copying.');
+  for(var i=0;i<7;i++){ if(days[i].weekday!==CAP_WD[i]) throw new Error('The days are not Sunday → Saturday in order — copy the whole page again.');
+    if(i&&capYmd(capAddDays(capFromYmd(days[0].date),i))!==days[i].date){ warn.push('dates are not 7 days in a row'); break; } }
+  var empty=days.filter(function(d){ return !d.sections.length; }).map(function(d){ return d.weekday; });
+  if(empty.length===7) throw new Error('The days were found but no dishes — copy the page again (Ctrl+A, Ctrl+C), and tell Claude if it repeats.');
+  if(empty.length) warn.push('no dishes read for '+empty.join(', '));
+  return {site:site, first_date:days[0].date, days:days, warn:warn, items:days.reduce(function(n,d){ return n+d.sections.reduce(function(k,s){ return k+s.items.length; },0); },0)};
+}
+function capMenuSig(days){ return (days||[]).map(function(d){ return d.weekday+':'+(d.sections||[]).map(function(s){ return capClean(s.label).toLowerCase()+'='+(s.items||[]).map(function(i){ return capClean(i.name).toLowerCase(); }).join('|'); }).join(';'); }).join('\n'); }
+
+// ───────────────────────── Supabase ─────────────────────────
+function capSb(method, path, body, prefer){
+  var h={'apikey':CAP_KEY,'Authorization':'Bearer '+CAP_KEY,'Content-Type':'application/json'}; if(prefer) h.Prefer=prefer;
+  return fetch(CAP_SB+path,{method:method,headers:h,body:body?JSON.stringify(body):undefined}).then(function(r){
+    if(!r.ok) return r.text().then(function(t){ var msg=t; try{ msg=JSON.parse(t).message||t; }catch(e){}
+      throw new Error((r.status===401||r.status===403?'Supabase refused it ('+r.status+') — the table\'s access policy needs to allow this key. ':'Supabase error '+r.status+' — ')+String(msg).slice(0,160)); });
+    return r.status===204?null:r.text().then(function(t){ return t?JSON.parse(t):null; }); },
+    function(){ throw new Error('Couldn\'t reach Supabase — check the internet connection and try again (nothing was saved).'); });
+}
+function capUpsert(table, conflict, rows){ var i=0, P='resolution=merge-duplicates,return=minimal';
+  function next(){ if(i>=rows.length) return Promise.resolve(); var chunk=rows.slice(i,i+500); i+=500; return capSb('POST','/'+table+'?on_conflict='+conflict,chunk,P).then(next); }
+  return next(); }
+
+// ───────────────────────── state (read from Supabase, so it is right on any PC) ─────────────────────────
+var capState={loaded:false,err:null,petal:null,cardio:null,cardThis:null,cardNext:null,menus:[]};
+var capRes={petal:null,cardio:null,menu:null}, capPending=null, capCardio=null, capBusy={};
+function capCycle(){ try{ return JSON.parse(localStorage.getItem('ub_cap_cycle')||'{}')||{}; }catch(e){ return {}; } }
+function capSetCycle(site,n){ var c=capCycle(); if(n) c[site]=n; else delete c[site]; try{ localStorage.setItem('ub_cap_cycle',JSON.stringify(c)); }catch(e){} }
+function capMonthRange(off){ var t=new Date(), a=new Date(t.getFullYear(),t.getMonth()+off,1), b=new Date(t.getFullYear(),t.getMonth()+off+1,1); return {a:capYmd(a),b:capYmd(b),name:CAP_MONTHS[a.getMonth()],m:a.getMonth()+1}; }
+function capRefresh(){
+  var th=capMonthRange(0), nx=capMonthRange(1), one=function(p){ return capSb('GET',p).then(function(r){ return (r&&r[0])||null; }); };
+  return Promise.all([
+    one('/oncall_roster?select=imported_at,date&source=eq.petal&order=imported_at.desc&limit=1'),
+    one('/oncall_roster?select=imported_at,date&source=eq.cardiology-pdf&order=imported_at.desc&limit=1'),
+    one('/oncall_roster?select=date&source=eq.cardiology-pdf&date=gte.'+th.a+'&date=lt.'+th.b+'&limit=1'),
+    one('/oncall_roster?select=date&source=eq.cardiology-pdf&date=gte.'+nx.a+'&date=lt.'+nx.b+'&limit=1'),
+    capSb('GET','/cafeteria_menu?select=site,page,imported_at')
+  ]).then(function(r){ capState={loaded:true,err:null,petal:r[0],cardio:r[1],cardThis:r[2],cardNext:r[3],menus:r[4]||[]}; },
+          function(e){ capState.loaded=true; capState.err=e.message; }).then(function(){ capDot(); if(typeof section!=='undefined'&&section==='capture') capPaint(); });
+}
+function capAge(iso){ if(!iso) return null; var d=new Date(iso), t=new Date(); return Math.round((new Date(t.getFullYear(),t.getMonth(),t.getDate())-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/86400000); }
+function capAgeTxt(n){ return n<=0?'✓ today':'✓ '+n+' d ago'; }
+function capMenuPages(site){ return capState.menus.filter(function(m){ return m.site===site; }).map(function(m){ return +m.page; }).sort(function(a,b){ return a-b; }); }
+function capStatus(){   // → {petal:{ok,txt}, cardio:{ok,txt}, menu:{ok,txt}}
+  var S={}, s=capState;
+  if(!s.loaded){ var w={ok:null,txt:'checking…'}; return {petal:w,cardio:w,menu:w}; }
+  if(s.err){ var e={ok:null,txt:'status unavailable'}; return {petal:e,cardio:e,menu:e}; }
+  var pa=capAge(s.petal&&s.petal.imported_at); S.petal=pa==null?{ok:false,txt:'Intensivists: not loaded'}:{ok:pa<=7,txt:capAgeTxt(pa)};
+  var th=capMonthRange(0), nx=capMonthRange(1), ca=capAge(s.cardio&&s.cardio.imported_at);
+  if(!s.cardThis) S.cardio={ok:false,txt:'Cardiology: '+th.name.slice(0,3)+' not loaded'};
+  else if(new Date().getDate()>=25&&!s.cardNext) S.cardio={ok:false,txt:'Cardiology: '+nx.name.slice(0,3)+' not loaded'};
+  else S.cardio={ok:true,txt:capAgeTxt(ca==null?0:ca)};
+  var cyc=capCycle(), bits=[], ok=true;
+  CAP_SITES.forEach(function(site){ var n=capMenuPages(site).length, c=cyc[site]; if(!n||(c&&n<c)) ok=false; bits.push(site+' '+n+'/'+(c||'?')+(c&&n>=c?' ✓':(n?' …':''))); });
+  S.menu={ok:ok,txt:bits.join(' · ')}; return S;
+}
+function capDot(){ var b=document.getElementById('captab'); if(!b) return; var S=capStatus(), bad=[S.petal,S.cardio,S.menu].some(function(x){ return x.ok===false; });
+  var d=b.querySelector('.capdot'); if(d) d.style.display=bad?'inline-block':'none'; b.title=bad?'Capture — something needs loading':'Capture — on-call lists and menus for Working-Bolt'; }
+
+// ───────────────────────── UI ─────────────────────────
+var CAP_CSS='.capwrap{height:100%;overflow:auto;padding:16px;background:#eef2f8;box-sizing:border-box}.capin{max-width:1180px;margin:0 auto}'
+ +'.caphd{font-size:15px;color:#445;margin:0 0 12px}.caphd b{color:#1a3c8f;font-size:18px}'
+ +'.capgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:14px;align-items:start}'
+ +'.capcard{background:#fff;border-radius:10px;padding:14px 16px;box-shadow:0 2px 10px rgba(20,40,80,.12);font-size:15px;color:#1c2733}'
+ +'.capcard h3{margin:0 0 4px;font-size:17px;color:#12285e;display:flex;gap:8px;align-items:center;flex-wrap:wrap}'
+ +'.capst{font-size:13.5px;font-weight:700;border-radius:10px;padding:2px 9px}.capst.g{background:#e3f4e6;color:#1e6b2c}.capst.a{background:#fff0d0;color:#8a5200}.capst.n{background:#eceff3;color:#667}'
+ +'.capbtn{font:inherit;font-size:14px;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:7px;padding:7px 12px;cursor:pointer;margin:6px 6px 0 0}'
+ +'.capbtn.s{background:#eaf1fd;color:#1a4fa8;border:1px solid #b6cff0}.capbtn.on{background:#12285e;color:#fff;border-color:#12285e}.capbtn.ok{background:#e3f4e6;color:#1e6b2c;border:1px solid #9fd0a8}'
+ +'.capins{font-size:14px;color:#445;margin:9px 0 6px}.capsite{font-size:13.5px;font-weight:700;color:#445;margin:8px 0 0}'
+ +'.capzone{border:2px dashed #a9c4ec;border-radius:9px;background:#f6f9fe;padding:16px 12px;text-align:center;color:#3a5a8c;font-size:14.5px;font-weight:600;cursor:pointer;outline:none}'
+ +'.capzone:focus,.capzone.over{border-color:#1a73e8;background:#e8f1fe}'
+ +'.capres{font-size:14.5px;margin-top:9px;line-height:1.4}.capres.ok{color:#1e6b2c;font-weight:700}.capres.err{color:#a02020;font-weight:600}.capres.wait{color:#556}.capwarn{color:#8a5200;font-weight:600;font-size:14px;margin-top:4px}'
+ +'.capcal{border-collapse:collapse;width:100%;margin:10px 0 4px;table-layout:fixed}.capcal th{font-size:12.5px;color:#667;font-weight:700;padding:2px}.capcal td{border:1px solid #cfd8e6;vertical-align:top;padding:3px 4px;height:46px;font-size:13.5px;line-height:1.25;overflow:hidden;overflow-wrap:anywhere}'
+ +'.capcal td b{display:block;font-size:12px;color:#889}.capcal td.miss{background:#fde8e8}.capcal td.off{background:#f4f6f9;border-color:#e4e9f0}'
+ +'.capdot{display:none;width:9px;height:9px;border-radius:50%;background:#e08a00;margin-left:6px;vertical-align:middle}';
+(function(){ if(typeof document==='undefined'||!document.head) return; var st=document.createElement('style'); st.textContent=CAP_CSS; document.head.appendChild(st); })();
+
+function capPetalUrl(){ var t=new Date(); return CAP_PETAL+'?startTime='+capYmd(capAddDays(t,-2))+'&endTime='+capYmd(capAddDays(t,200))+'&layoutId=3373&page=1&perPage=50'; }
+function capCardUrl(off){ var r=capMonthRange(off); return CAP_INTRA+'/rqhr/oncallLists/'+r.m+'/cardiologyRGH-'+r.name+'.pdf'; }
+function capMenuUrl(site,page){ return CAP_INTRA+'/nfs/Public/CafeteriaMenu/cafeteriamenu'+site+page+'.htm'; }
+function capOpen(url){ window.open(url,'_blank','noopener'); }
+function capResHTML(r){ if(!r) return ''; return '<div class="capres '+r.k+'">'+esc(r.t)+'</div>'+(r.w?'<div class="capwarn">⚠ '+esc(r.w)+'</div>':''); }
+function capStHTML(x){ return '<span class="capst '+(x.ok===true?'g':(x.ok===false?'a':'n'))+'">'+esc(x.txt)+'</span>'; }
+function renderCapture(view){
+  view.innerHTML='<div class="capwrap"><div class="capin"><div class="caphd"><b>Capture</b> — on-call lists and cafeteria menus for Working-Bolt. Staff names and food only: no patient data. Each one is: open the source → copy (or download) → paste (or drop) here.</div><div class="capgrid" id="capgrid"></div></div></div>';
+  capPaint(); if(!capBusy.refresh){ capBusy.refresh=1; capRefresh().then(function(){ capBusy.refresh=0; }); }
+}
+function capPaint(){
+  var g=document.getElementById('capgrid'); if(!g) return; var S=capStatus(), th=capMonthRange(0), nx=capMonthRange(1), cyc=capCycle();
+  var h='<div class="capcard"><h3>Intensivists '+capStHTML(S.petal)+'</h3>'
+    +'<button class="capbtn" onclick="capOpen(capPetalUrl())">Open PetalMD ↗</button>'
+    +'<div class="capins">Press <b>Ctrl+A, Ctrl+C</b> in the new tab, close it, then <b>Ctrl+V</b> here.</div>'
+    +'<div class="capzone" tabindex="0">Paste here (Ctrl+V)</div>'+capResHTML(capRes.petal)+'</div>';
+  h+='<div class="capcard"'+(capCardio?' style="grid-column:1/-1;order:9"':'')+'><h3>Cardiology '+capStHTML(S.cardio)+'</h3>'
+    +'<button class="capbtn" onclick="capOpen(capCardUrl(0))">Open '+esc(th.name)+' ↗</button><button class="capbtn s" onclick="capOpen(capCardUrl(1))">Open '+esc(nx.name)+' ↗</button>'
+    +'<div class="capins"><b>Download</b> the PDF (download icon in the viewer) and <b>drag it here</b>, or click to pick the file.</div>'
+    +'<div class="capzone" tabindex="0" id="capdrop" onclick="document.getElementById(\'capfile\').click()">Drop the PDF here · or click to choose</div>'
+    +'<input type="file" id="capfile" accept="application/pdf,.pdf" style="display:none" onchange="if(this.files[0])capCardioFile(this.files[0]);this.value=\'\'">'
+    +capResHTML(capRes.cardio)+capCardioPreview()+'</div>';
+  h+='<div class="capcard"><h3>Cafeteria '+capStHTML(S.menu)+'</h3>';
+  CAP_SITES.forEach(function(site){ var have=capMenuPages(site), mx=have.length?have[have.length-1]:0, n=cyc[site]||Math.max(4,mx+1);
+    h+='<div class="capsite">'+site+' week</div>';
+    for(var p=1;p<=n;p++){ var on=capPending&&capPending.site===site&&capPending.page===p;
+      h+='<button class="capbtn '+(on?'on':(have.indexOf(p)>=0?'ok':'s'))+'" title="'+(have.indexOf(p)>=0?'Captured — click to capture it again':'Open this page and capture it')+'" onclick="capMenuOpen(\''+site+'\','+p+')">'+p+(have.indexOf(p)>=0?' ✓':'')+'</button>'; }
+    if(!cyc[site]&&mx) h+='<button class="capbtn s" title="Use this when the next page does not exist: the cycle is the pages captured so far" onclick="capSetCycle(\''+site+'\','+mx+');capPaint();capDot()">No more pages</button>';
+    else if(cyc[site]) h+='<button class="capbtn s" title="Forget the cycle length (the menu changed)" onclick="capSetCycle(\''+site+'\',0);capPaint();capDot()">↺</button>'; });
+  h+='<div class="capins">'+(capPending?'Capturing <b>'+capPending.site+' week '+capPending.page+'</b>: ':'Click a week to open it, then: ')+'<b>Ctrl+A, Ctrl+C</b> on the menu page, then <b>Ctrl+V</b> here.</div>'
+    +'<div class="capzone" tabindex="0">Paste here (Ctrl+V)</div>'+capResHTML(capRes.menu)
+    +(capRes.menu&&capRes.menu.next?'<button class="capbtn" onclick="capMenuOpen(\''+capRes.menu.next.site+'\','+capRes.menu.next.page+')">Next page: '+capRes.menu.next.site+' week '+capRes.menu.next.page+' ↗</button>':'')+'</div>';
+  if(capState.err) h+='<div class="capcard"><div class="capres err">Status could not be read: '+esc(capState.err)+'</div></div>';
+  g.innerHTML=h;
+  var dz=document.getElementById('capdrop'); if(dz){ dz.ondragover=function(e){ e.preventDefault(); dz.classList.add('over'); }; dz.ondragleave=function(){ dz.classList.remove('over'); }; }
+}
+function capSet(k,res){ capRes[k]=res; capPaint(); }
+
+// paste anywhere on the Capture tab: PetalMD JSON → intensivists, anything else → the menu page being captured
+function capOnPaste(e){ if(typeof section==='undefined'||section!=='capture') return; var cd=e.clipboardData; if(!cd) return;
+  var tg=e.target; if(tg&&/^(TEXTAREA|INPUT)$/.test(tg.tagName||'')) return;   // the rail's bed-JSON box etc. keep working as usual
+  e.preventDefault(); e.stopPropagation();
+  var text=cd.getData('text/plain')||'', html=cd.getData('text/html')||'';
+  if(/requirementsPerDay/.test(text)) return capPetalPaste(text);
+  if(/^\s*%PDF/.test(text)) return capSet('cardio',{k:'err',t:'Copy/paste doesn\'t work for the cardiology list — download the PDF and drag the file here.'});
+  capMenuPaste(html,text); }
+function capOnDrop(e){ if(typeof section==='undefined'||section!=='capture') return; e.preventDefault(); e.stopPropagation();
+  var f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(f) capCardioFile(f); }
+(function(){ if(typeof document==='undefined'||!document.addEventListener) return;
+  document.addEventListener('paste',capOnPaste,true); document.addEventListener('drop',capOnDrop,true);
+  document.addEventListener('dragover',function(e){ if(typeof section!=='undefined'&&section==='capture') e.preventDefault(); },true); })();
+
+function capPetalPaste(text){ var P;
+  try{ P=capParsePetal(text,new Date().toISOString()); }catch(e){ return capSet('petal',{k:'err',t:e.message}); }
+  capSet('petal',{k:'wait',t:'Uploading '+P.rows.length+' rows…'});
+  capUpsert('oncall_roster','date,unit,role',P.rows).then(function(){ capSet('petal',{k:'ok',t:'✓ '+P.rows.length+' rows, '+capShort(P.from)+' → '+capShort(P.to),w:P.labels<6?'only '+P.labels+' of 6 rota rows were in the paste':''}); return capRefresh(); },
+    function(e){ capSet('petal',{k:'err',t:e.message}); }); }
+
+function capLoadPdfjs(){ if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  return new Promise(function(ok,no){ var s=document.createElement('script'); s.src=CAP_PDFJS+'pdf.min.js';
+    s.onload=function(){ if(!window.pdfjsLib) return no(new Error('x')); window.pdfjsLib.GlobalWorkerOptions.workerSrc=CAP_PDFJS+'pdf.worker.min.js'; ok(window.pdfjsLib); };
+    s.onerror=function(){ no(new Error('x')); }; document.head.appendChild(s); })
+    .catch(function(){ throw new Error('Couldn\'t load the PDF reader (cdnjs.cloudflare.com is blocked on this PC?) — try another browser or PC.'); }); }
+function capPdfItems(buf){ return capLoadPdfjs().then(function(lib){ return lib.getDocument({data:buf}).promise.then(function(pdf){
+    return pdf.getPage(1).then(function(page){ var vp=page.getViewport({scale:1});
+      return page.getTextContent().then(function(tc){ return tc.items.map(function(it){ var t=lib.Util.transform(vp.transform,it.transform), h=Math.hypot(t[2],t[3])||it.height||8;
+        return {str:it.str,x:t[4],y:t[5],w:it.width||0,h:h}; }); }); }); }); }); }
+function capCardioFile(file){ capCardio=null;
+  if(!/\.pdf$/i.test(file.name||'')&&file.type!=='application/pdf') return capSet('cardio',{k:'err',t:'That isn\'t a PDF — download the on-call PDF from the viewer and drop that file.'});
+  capSet('cardio',{k:'wait',t:'Reading the PDF…'});
+  file.arrayBuffer().then(capPdfItems).then(function(items){
+    if(!items.length) throw new Error('The PDF has no text in it (a scanned image?) — it can\'t be read automatically.');
+    var P=capParseCardio(items,new Date().toISOString());
+    if(P.missing.length){ capCardio={P:P,blocked:true}; return capSet('cardio',{k:'err',t:'Couldn\'t read the PDF cleanly — '+P.missing.length+' day'+(P.missing.length>1?'s':'')+' missing ('+P.missing.slice(0,12).join(', ')+(P.missing.length>12?'…':'')+'). Nothing was uploaded.'}); }
+    capCardio={P:P}; capSet('cardio',{k:'wait',t:CAP_MONTHS[P.month]+' '+P.year+' read — check it against the PDF, then upload.',w:P.unknown.length?'initials not in the legend, kept as written: '+P.unknown.join(', '):''}); })
+  .catch(function(e){ capSet('cardio',{k:'err',t:e.message||String(e)}); }); }
+function capCardioPreview(){ if(!capCardio) return ''; var P=capCardio.P, h='<table class="capcal"><tr>'+CAP_WD.map(function(w){ return '<th>'+w.slice(0,3)+'</th>'; }).join('')+'</tr><tr>';
+  for(var i=0;i<P.fw;i++) h+='<td class="off"></td>';
+  for(var d=1;d<=P.last;d++){ var x=P.days[d]||{}, ok=x.day&&x.oncall; h+='<td class="'+(ok?'':'miss')+'"><b>'+d+'</b>'+(ok?esc(x.day)+(x.oncall!==x.day?' / '+esc(x.oncall):''):'?')+'</td>'; if((P.fw+d)%7===0&&d<P.last) h+='</tr><tr>'; }
+  for(var j=(P.fw+P.last)%7;j&&j<7;j++) h+='<td class="off"></td>';
+  h+='</tr></table><div style="font-size:13px;color:#667">On-call surname per day (day / after 1700 when split).</div>';
+  if(!capCardio.blocked&&!capCardio.done) h+='<button class="capbtn" onclick="capCardioUpload()">✓ Looks right — upload '+CAP_MONTHS[P.month]+'</button><button class="capbtn s" onclick="capCardio=null;capSet(\'cardio\',null)">Cancel</button>';
+  return h; }
+function capCardioUpload(){ if(!capCardio||capCardio.blocked) return; var P=capCardio.P; capSet('cardio',{k:'wait',t:'Uploading '+P.rows.length+' rows…'});
+  capUpsert('oncall_roster','date,unit,role',P.rows).then(function(){ capCardio.done=true; capSet('cardio',{k:'ok',t:'✓ '+P.rows.length+' rows, '+capShort(P.rows[0].date)+' → '+capShort(P.rows[P.rows.length-1].date)}); return capRefresh(); },
+    function(e){ capSet('cardio',{k:'err',t:e.message}); }); }
+
+function capMenuOpen(site,page){ capPending={site:site,page:page}; capRes.menu=null; capOpen(capMenuUrl(site,page)); capPaint(); }
+function capMenuPaste(html,text){ var P;
+  if(!capPending) return capSet('menu',{k:'err',t:'Click the week button first (e.g. RGH 1) so the board knows which page this is — then copy the page and paste again.'});
+  var site=capPending.site, page=capPending.page;
+  try{ var rows=html?capHtmlRows(html):capTextRows(text);
+    try{ P=capParseMenuRows(rows,new Date()); }catch(e1){ if(html&&text){ try{ P=capParseMenuRows(capTextRows(text),new Date()); }catch(e2){ throw e1; } } else throw e1; }
+  }catch(e){ return capSet('menu',{k:'err',t:e.message}); }
+  if(P.site&&P.site!==site) return capSet('menu',{k:'err',t:'That page says "Daily Specials '+P.site+'" but you were capturing '+site+' week '+page+' — click the right week button and paste again. Nothing was uploaded.'});
+  capSet('menu',{k:'wait',t:'Checking '+site+' week '+page+'…'});
+  var chk=page>1?capSb('GET','/cafeteria_menu?select=days&site=eq.'+site+'&page=eq.1').then(function(r){ return r&&r[0]?r[0].days:null; }):Promise.resolve(null);
+  chk.then(function(w1){
+    if(w1&&capMenuSig(w1)===capMenuSig(P.days)){ capSetCycle(site,page-1); capPending=null; capSet('menu',{k:'ok',t:'✓ '+site+' cycle = '+(page-1)+' weeks (this page repeats week 1 — not stored)'}); return capRefresh(); }
+    return capUpsert('cafeteria_menu','site,page',[{site:site,page:page,first_date:P.first_date,days:P.days,imported_at:new Date().toISOString()}]).then(function(){
+      var cyc=capCycle()[site]; capPending=null;
+      capSet('menu',{k:'ok',t:'✓ '+site+' week '+page+' — '+capShort(P.first_date)+' → '+capShort(P.days[6].date)+', '+P.items+' dishes',w:P.warn.join(' · '),next:(cyc&&page>=cyc)?null:{site:site,page:page+1}}); return capRefresh(); }); })
+  .catch(function(e){ capSet('menu',{k:'err',t:e.message}); }); }
 </script>
 <script>
 // ---- embedded tools (base64, injected per bed / for handover) ----
@@ -1769,6 +2131,7 @@ function renderView(){
   else if(section==='park'){ renderPark(view); }
   else if(section==='angela'){ renderAngela(view); }
   else if(section==='prompts'){ renderPrompts(view); }
+  else if(section==='capture'){ renderCapture(view); }
   renderBedBar();
 }
 // capture the OUTGOING bed's iframe state (edited fields via captureToD + the SCM block) before it's re-mounted
@@ -2999,5 +3362,6 @@ var pj=document.getElementById('pjson');
 pj.addEventListener('paste', function(){ setTimeout(loadPaste, 40); });
 pj.addEventListener('keydown', function(e){ if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){ e.preventDefault(); loadPaste(); } });
 init();
+try{ capRefresh(); }catch(e){}   // Capture tab: read its state from Supabase so the tab dot is right on any PC
 </script>
 </body></html>
