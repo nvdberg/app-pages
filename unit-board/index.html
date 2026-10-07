@@ -109,7 +109,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.51 · 06-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.52 · 06-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1330,6 +1330,7 @@ function capvNight(ix,k){   // night on-call grouped by person → [{name, units
 function capvNightTxt(g){ if(!g.length) return '<span class="none">—</span>';
   return '<span class="n1">'+esc(g[0].name)+'</span>'+(g.length>1?'<span class="n2">(2nd '+g.slice(1).map(function(x){ return esc(x.name); }).join(', ')+')</span>':''); }
 function capvHome(ix,k,name){ if(!name) return null; for(var i=0;i<CAPV_ICU.length;i++){ if(ix[k+'|'+CAPV_ICU[i][0]+'|day']===name) return CAPV_ICU[i]; } return null; }   // the unit the night on-call person works by day
+function capvCcuWeek(ix,k){ var d=capFromYmd(k); d=capAddDays(d,-((d.getDay()+2)%7)); return ix[capYmd(d)+'|CCU|day']||null; }   // physically in CCU: the cardiologist on the Friday that starts this Fri–Thu week
 function capvStamp(){   // when each list was last IMPORTED (Capture tab) + how far it runs + whether it is due for an update → html
   var mx={}, end={}; (capView.roster||[]).forEach(function(r){ var k=r.source==='petal'?'Intensivists':'Cardiology'; if(r.imported_at&&(!mx[k]||r.imported_at>mx[k])) mx[k]=r.imported_at; if(r.name&&(!end[k]||r.date>end[k])) end[k]=r.date; });
   var f=function(iso){ var d=new Date(iso), n=capAge(iso); return CAP_MONTHS[d.getMonth()].slice(0,3)+' '+d.getDate()+', '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+(n===0?' (today)':(n===1?' (yesterday)':' ('+n+' d ago)')); };
@@ -1352,23 +1353,25 @@ function renderOncall(view){ capvCss(); capViewLoad(false);
   var G0=capvNight(ix,sel), home0=G0.length?capvHome(ix,sel,G0[0].name):null;
   CAPV_ICU.forEach(function(u){ var n=ix[dayK+'|'+u[0]+'|day'], on=home0&&home0[0]===u[0]; h+='<div class="cvchip u-'+u[0]+(on?' onc':'')+'"><div class="u">'+u[1]+'</div><div class="n">'+(n?esc(n):'<span class="none">not loaded</span>')+'</div>'+(on?'<div class="x">🌙 on call tonight · all ICUs</div>':'')+'</div>'; });
   var cd=ix[dayK+'|CCU|day'], sd=ix[dayK+'|CCU|stemi_day'], co=ix[dayK+'|CCU|consults'];
-  h+='<div class="cvchip ccu"><div class="u">CCU</div><div class="n">'+(cd?esc(cd):'<span class="none">not loaded</span>')+'</div>'+(sd||co?'<div class="x">'+(sd?'STEMI '+esc(sd):'')+(sd&&co?' · ':'')+(co?'consults '+esc(co):'')+'</div>':'')+'</div>';
+  var cw=capvCcuWeek(ix,dayK), cx=[cw&&cd&&cd!==cw?'day call '+esc(cd):'', sd?'STEMI '+esc(sd):'', co?'consults '+esc(co):''].filter(Boolean);
+  h+='<div class="cvchip ccu"><div class="u">CCU'+(cw?' · in unit this week':'')+'</div><div class="n">'+(cw||cd?esc(cw||cd):'<span class="none">not loaded</span>')+'</div>'+(cx.length?'<div class="x">'+cx.join(' · ')+'</div>':'')+'</div>';
   h+='</div></div>';
   var G=capvNight(ix,nd), cn=ix[nd+'|CCU|oncall'], sn=ix[nd+'|CCU|stemi_oncall'];
   h+='<div class="cvrow'+(night?' live':'')+'"><div class="cvlab">🌙 Night on call <small>17:00–08:00'+(night?' · now':'')+(!pick&&hr<8?' · since last evening':'')+'</small></div><div class="cvnow">';
   if(!G.length) h+='<div class="cvchip night wide"><div class="u">All ICUs</div><div class="n"><span class="none">not loaded</span></div></div>';
   var homeN=G.length?capvHome(ix,nd,G[0].name):null;
   if(G.length) h+='<div class="cvchip night wide'+(homeN?' u-'+homeN[0]:'')+'"><div class="u ul">All ICUs '+[['SICU','SICU'],['MICU','MICU'],['PHICU','PICU']].map(function(u){ return '<span class="ut'+(homeN&&homeN[0]===u[0]?' on t-'+u[0]:'')+'">'+u[1]+'</span>'; }).join('')+'</div><div class="n">'+esc(G[0].name)+'</div>'+(G.length>1?'<div class="x">2nd on call: '+G.slice(1).map(function(x){ return esc(x.name); }).join(', ')+'</div>':'')+'</div>';
-  h+='<div class="cvchip ccu"><div class="u">CCU</div><div class="n">'+(cn?esc(cn):'<span class="none">not loaded</span>')+'</div>'+(sn?'<div class="x">STEMI '+esc(sn)+'</div>':'')+'</div>';
+  h+='<div class="cvchip ccu"><div class="u">CCU on call</div><div class="n">'+(cn?esc(cn):'<span class="none">not loaded</span>')+'</div>'+(sn?'<div class="x">STEMI '+esc(sn)+'</div>':'')+'</div>';
   h+='</div></div>';
-  h+='<div class="cvscroll" id="cvscroll"><table class="cvt"><thead><tr><th>Date</th><th class="c-PHICU">Pasqua ICU<small>day</small></th><th class="c-SICU">SICU<small>day</small></th><th class="c-MICU">MICU<small>day</small></th><th>🌙 Night on call<small>all ICUs · 2nd call</small></th><th class="c-CCU">CCU<small>before / after 17:00</small></th><th class="c-CCU">STEMI<small>before / after 17:00</small></th><th class="c-CCU">Consults<small>08–17</small></th></tr></thead><tbody>';
+  h+='<div class="cvscroll" id="cvscroll"><table class="cvt"><thead><tr><th>Date</th><th class="c-PHICU">Pasqua ICU<small>day</small></th><th class="c-SICU">SICU<small>day</small></th><th class="c-MICU">MICU<small>day</small></th><th>🌙 Night on call<small>all ICUs · 2nd call</small></th><th class="c-CCU">In CCU<small>Fri → Thu week</small></th><th class="c-CCU">CCU on call<small>before / after 17:00</small></th><th class="c-CCU">STEMI<small>before / after 17:00</small></th><th class="c-CCU">Consults<small>08–17</small></th></tr></thead><tbody>';
   var first=capView.roster[0].date, last=capView.roster[capView.roster.length-1].date, dash='<span class="none">—</span>', d=capFromYmd(first), n=0;
   for(;n<1500;n++,d=capAddDays(d,1)){ var k=capYmd(d); if(k>last) break; var we=d.getDay()===0||d.getDay()===6;
     h+='<tr id="cvr-'+k+'" class="'+(k===sel?'td':(we?'we':''))+(k<ty?' past':'')+'" onclick="capvPick(\''+k+'\')"><td class="d">'+capvWhen(d)+(k===ty&&pick?' <span class="nt">today</span>':'')+'</td>';
     var gk=capvNight(ix,k), hk=gk.length?capvHome(ix,k,gk[0].name):null;
     CAPV_ICU.forEach(function(u){ var nm=ix[k+'|'+u[0]+'|day'], on=hk&&hk[0]===u[0]; h+='<td'+(on?' class="onc o-'+u[0]+'" title="On call that night for all ICUs"':'')+'>'+(nm?esc(nm):dash)+'</td>'; });
     h+='<td class="ng'+(hk?' o-'+hk[0]:'')+'">'+capvNightTxt(gk)+'</td>';
-    h+='<td>'+capvPair(ix[k+'|CCU|day'],ix[k+'|CCU|oncall'])+'</td><td>'+capvPair(ix[k+'|CCU|stemi_day'],ix[k+'|CCU|stemi_oncall'])+'</td><td>'+(ix[k+'|CCU|consults']?esc(ix[k+'|CCU|consults']):dash)+'</td></tr>'; }
+    var cwk=capvCcuWeek(ix,k);
+    h+='<td'+(d.getDay()===5?' style="font-weight:700"':'')+'>'+(cwk?esc(cwk):dash)+'</td><td>'+capvPair(ix[k+'|CCU|day'],ix[k+'|CCU|oncall'])+'</td><td>'+capvPair(ix[k+'|CCU|stemi_day'],ix[k+'|CCU|stemi_oncall'])+'</td><td>'+(ix[k+'|CCU|consults']?esc(ix[k+'|CCU|consults']):dash)+'</td></tr>'; }
   h+='</tbody></table></div></div></div>';
   var old=document.getElementById('cvscroll'), keep=old&&!capView.jump?old.scrollTop:null; view.innerHTML=h; capView.jump=false;
   var sc=document.getElementById('cvscroll'), row=document.getElementById('cvr-'+sel);
