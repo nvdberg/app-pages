@@ -63,6 +63,7 @@
   .bedbtn .chip.tsk{background:#ffd9d9;color:#a11}
   .bedbtn .chip.scmst{background:#fde3cf;color:#a5480a}
   .bedbtn .chip.tx{background:#dfeee0;color:#1a6b2e}
+  .bedbtn .chip.mvd{background:#fde9c8;color:#8a5200;margin-left:4px}
   #stage{flex:1;display:flex;flex-direction:column;min-width:0}
   #pastebar{background:#dbe6f6;border-bottom:1px solid #c3d4ee;padding:11px 14px;display:flex;gap:10px;align-items:stretch}
   #pjson{flex:1;font-family:'Consolas','Courier New',monospace;font-size:12px;min-height:54px;padding:10px 12px;border:2px dashed #a9c4ec;border-radius:8px;resize:vertical;background:#fff;line-height:1.45}
@@ -109,7 +110,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.55 · 09-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.56 · 10-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -801,6 +802,7 @@ function buildHandoverD(boardUnit, bedsMap, uncap){
                       : (w&&w.d)               ? bedToHandover(w.d, w.overnight, uncap)  // transform (fallback)
                       :                          {empty:true};
       var _bb=beds[String(n)]; if(_bb&&_bb.tags) _bb.tags=hvFixTransferDate(hvSanitizeTags(_bb.tags), w&&w.d, _bb);   // central guard: no "[object Object]" chip ever reaches Concise/Handover (feedback 21-Sep)
+      if(_bb&&!_bb.empty&&w&&w.moved&&w.moved.from!=null){ _bb.tags=(_bb.tags||[]).concat([{cls:'transfer-tag',text:'⇄ moved from Bed '+w.moved.from}]); }   // v2.56 ⇄ Move bed — the previous bed shows on Handover + Concise
     } catch(e){
       beds[String(n)] = { pt:'Bed '+n, admit:'⚠ render error — open this bed and re-paste', _err:String(e&&e.message||e), goc:'goc-uk', tags:[] };
     }
@@ -1835,6 +1837,7 @@ function renderRail(){
       var w=beds[n], b=document.createElement('button');
       b.className='bedbtn'+(w?' filled':'')+(current===n?' cur':'');
       var inner='<span class="dot"></span><span class="bn">Bed '+n+'</span>';
+      if(w&&w.moved&&w.moved.from!=null)inner+='<span class="chip mvd" title="Moved from Bed '+esc(w.moved.from)+'">⇄ from '+esc(w.moved.from)+'</span>';
       if(w && w.hvcard && !w.d){ // handover-only (colleague / uncharted) bed
         inner+='<span class="st hv" title="Handover-only — not charted by you">H</span>';
         inner+='<span class="idl">'+esc((w.hvcard.pt||'handover-only').slice(0,26))+'</span>';
@@ -1898,6 +1901,7 @@ function renderBedBar(){
   bar.style.display='flex';
   bar.innerHTML=
     '<span class="bbtag">'+esc(tag)+'</span>'+
+    (w.moved&&w.moved.from!=null?'<span class="bbtag" style="background:#fde9c8;color:#8a5200" title="This patient was moved here from Bed '+esc(w.moved.from)+(w.moved.at?' on '+esc(boardDate(w.moved.at)):'')+'">⇄ moved from Bed '+esc(w.moved.from)+' <a onclick="mvClearMark()" title="Remove this marker (the patient stays here)" style="cursor:pointer;margin-left:4px">×</a></span>':'')+
     (w._scmStale?'<span class="bbtag" style="background:#fde3cf;color:#a5480a" title="The note changed (update / re-paste / GoC / revert) since its SCM was generated — open 📋 Generate SCM in the tool and paste the new one">⟳ SCM out of date</span>':'')+
     (isUn?'<button class="asg" onclick="assignUnassigned()" title="Give this patient a bed number">⇱ Assign bed</button>':'')+
     '<button class="rnd" onclick="toggleRounded()">'+(w.state==='rounded'?'↺ Pre-round':'✓ Mark rounded')+'</button>'+
@@ -1916,6 +1920,7 @@ function renderBedBar(){
     provChip(d)+
     '<button class="sec" onclick="clearGenerated()" title="Discard the generated SCM note for this bed (patient data stays) — then regenerate">↻ Clear note</button>'+
     '<button class="sec" onclick="newAdmission(\''+current+'\')" title="Archive this note & start a new patient here">＋ New pt</button>'+
+    (isUn?'':'<button class="sec" onclick="moveBed()" title="The patient physically moved to another bed in this unit — the whole note, ticks and history move with them, and the old bed number stays visible. An occupied target bed swaps.">⇄ Move bed</button>')+
     '<button class="sec" onclick="transferBed(\''+current+'\')" title="Transfer/discharge: archive note & clear">⇥ Transfer / DC</button>'+
     '<button class="sec" style="color:#933" onclick="hardDeleteBed(\''+current+'\')" title="Remove this bed — you choose: archive to history (recoverable) or permanent delete (no trace).">🗑 Delete</button>';
 }
@@ -1940,6 +1945,47 @@ function provChip(d){
   var t=''; if(m.emitted){ var dt=new Date(m.emitted); t=isNaN(dt)?esc(m.emitted):dt.toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }
   return '<span class="provchip" title="Generated by (board metadata — not in the SCM note)">⚙ '+esc(m.model||'?')+(t?' · '+t:'')+'</span>';
 }
+// ---- ⇄ Move bed (v2.56): a patient physically changes bed (e.g. beds closed) — the whole wrapper moves, the old bed is remembered ----
+function mvBedList(){ var a=[]; unitGroups(unit).forEach(function(g){ a=a.concat(g.beds); }); return a; }
+function mvSetBed(w,toN){ if(!w)return; if(w.d)w.d.bed=toN; if(w._gen)w._gen.bed=toN; if(w.hvcard&&w.hvcard.bed!=null)w.hvcard.bed=toN;
+  (w._pts||[]).forEach(function(p){ if(p&&p.d)p.d.bed=toN; if(p&&p._gen)p._gen.bed=toN; }); }
+function mvMark(w,fromN,toN){ if(!w)return; var o=(w.moved&&w.moved.from!=null)?w.moved.from:fromN;
+  if(String(o)===String(toN)) delete w.moved; else w.moved={from:o,at:isoToday()}; }   // back in the original bed → no marker
+function mvTagCard(c,w){ if(!c||c.empty)return c; c.tags=(Array.isArray(c.tags)?c.tags:[]).filter(function(t){ return !(t&&/^⇄ moved from/.test(String(t.text||''))); });
+  if(w&&w.moved&&w.moved.from!=null) c.tags.push({cls:'transfer-tag',text:'⇄ moved from Bed '+w.moved.from}); return c; }
+function moveBedTo(a,b){   // a = occupied bed, b = any bed of this unit (occupied → the two patients swap). No dialogs here.
+  if(String(a)===String(b)||!beds[a]) return false;
+  captureCurrentBed();
+  var wa=beds[a], wb=beds[b]||null;
+  mvMark(wa,a,b); mvSetBed(wa,b); beds[b]=wa; ulog(b,'⇄ moved','Bed '+a+' → Bed '+b);
+  if(wb){ mvMark(wb,b,a); mvSetBed(wb,a); beds[a]=wb; ulog(a,'⇄ moved','Bed '+b+' → Bed '+a+' (swap)'); } else delete beds[a];
+  if(hovOverride&&hovOverride.beds){ var H=hovOverride.beds, ha=H[String(a)], hb=H[String(b)];   // an edited handover/concise follows the patient
+    H[String(b)]=mvTagCard(ha||{empty:true},beds[b]); H[String(a)]=mvTagCard(hb||{empty:true},beds[a]); saveHov(); }
+  if(current===a)current=b; else if(current===b&&wb)current=a;
+  save(); renderRail(); renderView(); return true; }
+function moveBed(){ if(!guardEdit())return; var a=current; if(a==null||!beds[a]||beds[a].rr||/^U/.test(String(a)))return;
+  var list=mvBedList(), v=prompt('Move the patient in Bed '+a+' to which bed?\n('+unit+' beds: '+list.join(', ')+')');
+  if(v===null)return; var b=parseInt(v,10);
+  if(list.indexOf(b)<0){ alert('Bed '+v+' is not a '+unit+' bed.'); return; }
+  if(b===+a)return;
+  if(beds[b]){ var o=beds[b], who=(o.d&&o.d.age_sex)||(o.hvcard&&o.hvcard.pt)||'a patient';
+    if(!confirm('Bed '+b+' already has '+who+'.\n\n• OK  →  SWAP the two patients (Bed '+a+' ⇄ Bed '+b+')\n• Cancel  →  leave both where they are'))return; }
+  moveBedTo(a,b); hovFlash('⇄ Bed '+a+' → Bed '+b+(beds[a]?' (swapped)':'')); }
+function mvClearMark(){ if(!guardEdit())return; var w=beds[current]; if(!w||!w.moved)return; delete w.moved;
+  if(hovOverride&&hovOverride.beds&&hovOverride.beds[String(current)]){ mvTagCard(hovOverride.beds[String(current)],w); saveHov(); }
+  save(); renderRail(); renderView(); }
+// A paste still tagged with the OLD bed number (the bed's chat does not know about the move) follows the patient.
+// Silent only when it cannot be the wrong patient; otherwise it asks.
+function mvRedirect(d){ if(!d||typeof d!=='object'||d._mvr||isRR()||d.prep===true)return d; var n=d.bed; if(n==null)return d;
+  var to=null; Object.keys(beds).forEach(function(k){ var w=beds[k]; if(w&&w.moved&&String(w.moved.from)===String(n)&&String(k)!==String(n))to=k; });
+  if(to==null)return d; d._mvr=1;
+  var occ=!!beds[n], full=(d.patch!==true&&!isHvCard(d)&&!!d.age_sex), go;
+  function same(w){ var x=w&&w.d; return !!(x&&x.age_sex===d.age_sex&&(!d.icu_admit||!x.icu_admit||x.icu_admit===d.icu_admit)); }
+  function ask(){ return confirm('This paste is tagged Bed '+n+', but the patient who was in Bed '+n+' has been moved to Bed '+to+'.\n\n• OK  →  apply it to Bed '+to+' (the moved patient)\n• Cancel  →  apply it to Bed '+n+(occ?' (the patient there now)':' (as a new patient)')); }
+  if(full){ var st=same(beds[to]), sn=same(beds[n]); go=(st&&!sn)?true:(sn&&!st)?false:(!st&&!sn)?false:ask(); }   // a different patient (new admission into the old bed) is never redirected
+  else if(d.patch===true&&!occ) go=true;   // an update for an empty bed can only mean the moved patient
+  else go=ask();
+  if(go){ d.bed=/^\d+$/.test(to)?+to:to; d._mvnote='Bed '+n+' → Bed '+to+' (patient moved)'; } return d; }
 function assignUnassigned(){
   if(!guardEdit())return;
   if(!/^U\d+$/.test(String(current))||!beds[current])return;
@@ -2004,7 +2050,7 @@ function mMarkJoin(a,b){ var o=_mj(a||{}); Object.keys(b||{}).forEach(function(k
 function mCtxBed(k){ var w=beds[k]; if(!w)return ''; var d=w.d; if(current===k){ try{ captureCurrentBed(); d=w.d; }catch(e){} }
   if(!d) return w.hvcard?('Bed '+k+' — handover card only (no problem list)\n'):'';
   var L=[], cut=function(x,n){ x=String(x==null?'':x).replace(/\s+/g,' ').trim(); return x.length>n?x.slice(0,n-1)+'…':x; };
-  L.push('── Bed '+k+' · '+(d.age_sex||'?')+' · ICU admit '+(d.icu_admit||'?')+' ──');
+  L.push('── Bed '+k+(w.moved&&w.moved.from!=null?' (moved from Bed '+w.moved.from+' — use Bed '+k+' in the update)':'')+' · '+(d.age_sex||'?')+' · ICU admit '+(d.icu_admit||'?')+' ──');
   if(d.subtitle)L.push('Working dx: '+cut(d.subtitle,160));
   (d.problems||[]).forEach(function(q,j){ var t=q.type==='goc'?' [GoC]':q.type==='dispo'?' [Dispo]':'';
     L.push('P'+(j+1)+t+' '+(q.name||''));
@@ -2136,6 +2182,7 @@ function pvApply(){ if(!pvState)return; var st=pvState, off={};
   st.done(st.arr.map(function(p,pi){ return off[pi]?pvFilter(p,off[pi]):p; })); }
 function pvGate(t,go){ var parsed; try{ parsed=JSON.parse(t); }catch(e){ return go(t); }
   var arr=Array.isArray(parsed)?parsed:[parsed];
+  if(!isRR()){ arr.forEach(mvRedirect); t=JSON.stringify(parsed); }   // v2.56: a paste tagged with a moved patient's old bed follows the patient (asked once; _mvr carries the answer)
   if(isRR()||!pvOn()||!arr.some(function(x){ return x&&x.patch===true&&beds[x.bed]&&beds[x.bed].d; })) return go(t);
   arr.forEach(dxFollow);   // v2.35: Dx-follows-rename rows appear (tickable) in the preview
   openPatchPreview(arr,function(out){ go(JSON.stringify(Array.isArray(parsed)?out:out[0])); }); }
@@ -2324,7 +2371,7 @@ function loadJSONText(t, srcMsg){
   // switch unit once, from the first entry that names a known unit — BUT not while in RR (entries stay in RR) and not for prep drafts (they go to Park)
   if(!isRR()) for(var i=0;i<arr.length;i++){ if(arr[i]&&arr[i].prep===true)continue; var u=arr[i]&&normUnit(arr[i].unit); if(arr[i]&&arr[i].unit&&UNITS[u]&&u!==unit){ unit=u; document.getElementById('unitSel').value=unit; load(); break; } }
   var loaded=[], errs=[];
-  var notes=[]; arr.forEach(function(d){ var r=routeEntry(d); if(r.ok){ loaded.push(r.bed); if(r.note)notes.push(r.note); } else errs.push(r.err); });
+  var notes=[]; arr.forEach(function(d){ mvRedirect(d); if(d&&typeof d==='object'){ if(d._mvnote)notes.push(d._mvnote); delete d._mvr; delete d._mvnote; } var r=routeEntry(d); if(r.ok){ loaded.push(r.bed); if(r.note)notes.push(r.note); } else errs.push(r.err); });
   save();
   if(msg) msg.textContent=(loaded.length?'✓ '+(srcMsg||'Loaded')+' '+loaded.length+' bed'+(loaded.length>1?'s':'')+' ('+loaded.join(', ')+')':'')+(errs.length?' · ⚠ '+errs.join('; '):'')+(notes.length?' · '+notes.join(' | '):'');
   return {loaded:loaded, errs:errs};
