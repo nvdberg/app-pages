@@ -111,7 +111,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.57 · 10-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.58 · 10-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -2049,8 +2049,13 @@ function mPid(probs,id){ var m=/^P?(\d+)$/i.exec(String(id||'').trim()); if(!m)r
 function mMarkJoin(a,b){ var o=_mj(a||{}); Object.keys(b||{}).forEach(function(k){ o[k]=o[k]||{}; Object.keys(b[k]).forEach(function(f){ o[k][f]=(o[k][f]||[]).concat(b[k][f]); }); }); return o; }
 // ---- 📋 For update (v2.09): the board's CURRENT edited problem list, compact, for the chat Claude to file orders against ----
 function mCtxBed(k){ var w=beds[k]; if(!w)return ''; var d=w.d; if(current===k){ try{ captureCurrentBed(); d=w.d; }catch(e){} }
-  if(!d) return w.hvcard?('Bed '+k+' — handover card only (no problem list)\n'):'';
   var L=[], cut=function(x,n){ x=String(x==null?'':x).replace(/\s+/g,' ').trim(); return x.length>n?x.slice(0,n-1)+'…':x; };
+  function cardLines(h,ttl){ if(!h)return; var one=function(v){ return Array.isArray(v)?v.map(function(t){return (t&&t.text)||t;}).join(' ; '):String(v==null?'':v).replace(/\s+/g,' ').trim(); };
+    L.push(ttl); ['admit','dx','tx','plan','goc_text','tags'].forEach(function(f){ var v=one(h[f]); if(v)L.push('   handover.'+f+': '+v); }); }
+  if(!d){ if(!w.hvcard)return ''; var c=w.hvcard;
+    L.push('── Bed '+k+(w.moved&&w.moved.from!=null?' (moved from Bed '+w.moved.from+' — use Bed '+k+' in the update)':'')+' · '+(c.pt||'?')+' · HANDOVER CARD ONLY (no problem list) ──');
+    cardLines(c,'Current card — a change to treatment / diagnosis / plan must be sent as handover.tx / dx / plan REWRITTEN WHOLE from this text (problems[], meds_add, tx_add cannot be shown on this bed):');
+    L.push('MAR list: none — do NOT send meds_add / meds_stop'); return L.join('\n')+'\n'; }
   L.push('── Bed '+k+(w.moved&&w.moved.from!=null?' (moved from Bed '+w.moved.from+' — use Bed '+k+' in the update)':'')+' · '+(d.age_sex||'?')+' · ICU admit '+(d.icu_admit||'?')+' ──');
   if(d.subtitle)L.push('Working dx: '+cut(d.subtitle,160));
   (d.problems||[]).forEach(function(q,j){ var t=q.type==='goc'?' [GoC]':q.type==='dispo'?' [Dispo]':'';
@@ -2060,6 +2065,9 @@ function mCtxBed(k){ var w=beds[k]; if(!w)return ''; var d=w.d; if(current===k){
     var tx=_ml(q.tx), pl=_ml(q.plan); if(tx.length)L.push('   tx: '+tx.map(function(x){return cut(x,90);}).join(' | ')); if(pl.length)L.push('   plan: '+pl.map(function(x){return cut(x,90);}).join(' | ')); });
   var rj=w._rej||{}, rl=[]; Object.keys(rj).forEach(function(pk){ ['tx','plan'].forEach(function(f){ (rj[pk][f]||[]).forEach(function(x){ rl.push(cut(x,70)); }); }); });
   if(rl.length)L.push('Declined by physician (don\'t re-propose unless clinically new): '+rl.slice(0,25).join(' | '));
+  var _nm=(Array.isArray(d.meds)?d.meds.length:0);
+  L.push((_nm&&!w._medsPartial)?('MAR list: '+_nm+' orders'+(d.meds_asof?' as of '+d.meds_asof:'')+' — meds_add / meds_stop OK'):('MAR list: none'+(_nm?' ('+_nm+' order-change lines only)':'')+' — do NOT send meds_add / meds_stop; put order changes in tx_add / tx_stop'));
+  if(d.handover&&typeof d.handover==='object') cardLines(d.handover,'Handover card now (rewrite a field WHOLE as handover.<field> if your change belongs in it; fields you leave out are rebuilt from the note):');
   return L.join('\n')+'\n'; }
 function copyUpdateCtx(all){ var ks=all?Object.keys(beds).filter(function(k){return beds[k]&&(beds[k].d||beds[k].hvcard);}).sort(function(a,b){return (''+a).localeCompare(''+b,undefined,{numeric:true});}):[current];
   if(!all&&(current==null||!beds[current]||!beds[current].d)){ alert('Open a bed first.'); return; }
@@ -2200,8 +2208,22 @@ function dxFollow(p){ if(!p||p.patch!==true||p._dxf)return p; p._dxf=true; var w
     if(p.diagnoses_rename.some(function(r){ return r&&dxHit(line,r.match); })||(p.diagnoses_stop||[]).some(function(x){ return dxHit(line,x); }))return;
     p.diagnoses_rename.push({match:line,to:pp.rename,auto:true}); });
   if(!p.diagnoses_rename.length)delete p.diagnoses_rename; return p; }
+// v2.58 · a handover-card-only bed (no problem list) takes the patch's `handover` fields; anything that needs a problem list is reported, never dropped silently
+function mergePatchCard(p,n){ var w=beds[n], c=w.hvcard, hvP=(p.handover&&typeof p.handover==='object')?p.handover:{}, done=[], lost=[];
+  w._hvprev=_mj(c);
+  Object.keys(hvP).forEach(function(k){ c[k]=_mj(hvP[k]); if(k==='overnight')w.overnight=String(hvP[k]==null?'':hvP[k]); done.push(k); });
+  var pend=(p.pending_add||[]).map(function(x){return String(x||'').trim();}).filter(Boolean);
+  if(pend.length&&hvP.plan==null){ var cur=String(c.plan||''); pend.forEach(function(x){ if(_mn(cur).indexOf(_mn(x))<0)cur=cur?cur+' · '+x:x; }); c.plan=cur; done.push('pending → plan'); }
+  var needTx=['problems','meds','meds_add','meds_stop','investigations_add','consults_add'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
+  var needDx=['diagnoses_add','diagnoses_rename','diagnoses_stop'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
+  if(needTx.length&&hvP.tx==null)lost=lost.concat(needTx); if(needDx.length&&hvP.dx==null)lost=lost.concat(needDx); if(p.subtitle!=null&&hvP.dx==null&&hvP.admit==null)lost.push('subtitle');
+  hovRefreshBed(n);
+  var sum=(done.length?'card updated: '+done.join(', '):'nothing applied');
+  ulog(n,'🔄 '+(p.kind?String(p.kind)+' ':'')+'update (card)',sum+(lost.length?' · NOT shown on card: '+lost.join(', '):''));
+  return {ok:true, bed:n, note:'Bed '+n+' (handover card) — '+sum+(lost.length?' · ⚠ NOT on the card: '+lost.join(', ')+' — this bed has no problem list, so ask the chat to resend handover.tx / dx / plan rewritten whole (📋 For update now carries the card text)':'')}; }
 function mergePatch(p,opt){ opt=opt||{};
-  var n=p.bed; if(n==null||!beds[n]||!beds[n].d) return {ok:false,err:'patch for Bed '+n+' — no note on this board to update (paste the full JSON first)'};
+  var n=p.bed; if(n!=null&&beds[n]&&!beds[n].d&&beds[n].hvcard) return mergePatchCard(p,n);
+  if(n==null||!beds[n]||!beds[n].d) return {ok:false,err:'patch for Bed '+n+' — no note on this board to update (paste the full JSON first)'};
   var w=beds[n]; if(current===n) captureCurrentBed();
   dxFollow(p);
   pointPush(n,opt.label||'before update');
@@ -2277,7 +2299,9 @@ function mergePatch(p,opt){ opt=opt||{};
   });
   (p.pending_add||[]).forEach(function(e){ [d,g].forEach(function(t){ t.tasks=t.tasks||[]; if(!t.tasks.some(function(x){return _mn(x.text)===_mn(e);}))t.tasks.push({text:e,kind:'pending'}); }); });
   // 4d · MAR med list (v2.34): meds = the whole list re-read from a new MAR (replaces) · meds_add / meds_stop = deltas · meds_asof
-  if(Array.isArray(p.meds)){ d.meds=_mj(p.meds); g.meds=_mj(p.meds); cnt.add++; }
+  var _noMar=!(Array.isArray(d.meds)&&d.meds.length);
+  if(Array.isArray(p.meds)){ d.meds=_mj(p.meds); g.meds=_mj(p.meds); cnt.add++; delete w._medsPartial; _noMar=false; }
+  if(_noMar&&(p.meds_add||[]).some(function(m){return medTxt(m).trim();})) w._medsPartial=true;   // v2.58: a list started from order sheets is NOT a MAR
   (p.meds_stop||[]).forEach(function(x){ x=medTxt(x); [d,g].forEach(function(t){ var b4=(t.meds||[]).length; t.meds=(t.meds||[]).filter(function(m){ return !mStopHit(medTxt(m),x); }); if(t===d&&t.meds.length<b4)cnt.stop++; }); });
   (p.meds_add||[]).forEach(function(m){ if(!medTxt(m).trim())return; [d,g].forEach(function(t){ t.meds=t.meds||[]; if(!t.meds.some(function(o){return _mn(medTxt(o))===_mn(medTxt(m));})){ t.meds.push(_mj(m)); if(t===d)cnt.add++; } }); });
   if(p.meds_asof){ d.meds_asof=g.meds_asof=p.meds_asof; }
@@ -2294,13 +2318,16 @@ function mergePatch(p,opt){ opt=opt||{};
   var hvP=(p.handover&&typeof p.handover==='object')?p.handover:null, keepHv=false;
   if(hvP&&d.handover){ Object.keys(hvP).forEach(function(k){ d.handover[k]=_mj(hvP[k]); }); keepHv=true; cnt.hv=1; }
   else if(hvP&&hvP.event!=null){ d.handover_line=offer('top:handover_line',d.handover_line,g.handover_line,hvP.event); g.handover_line=hvP.event; cnt.hv=1; }
+  if(keepHv){ var _txM=!!(cnt.add||cnt.stop||cnt.np||cnt.res), _dxM=!!(cnt.dx||cnt.ren||cnt.np||cnt.res);   // v2.58: the patch moved data but sent only part of the card (e.g. overnight) → rebuild the fields it left behind from the note, so the card cannot keep yesterday's doses
+    if(_txM||_dxM){ try{ var _t=_mj(d); delete _t.handover; var _der=bedToHandover(_t,'',true), _fx=[];
+      (_txM?['tx','plan']:[]).concat(_dxM?['dx']:[]).forEach(function(f){ if(hvP[f]==null&&_der&&_der[f]){ d.handover[f]=_der[f]; _fx.push(f); } }); if(_fx.length)cnt.hvfix=_fx; }catch(e){} } }
   if(!keepHv) delete d.handover; if(p.handover_line==null&&!(hvP&&hvP.event!=null)&&(cnt.add||cnt.stop||cnt.np||cnt.ren||cnt.dx))delete d.handover_line;   // data moved → stale handover card re-derives
   w.d=d; w._gen=g; w._rej=rej; mScmStale(w); delete w._scm; hovRefreshBed(n);   // a saved v2 handover/concise would otherwise hide the update
   if(opt.keep){ nw=mMarkJoin(w._mnew,nw); rp=mMarkJoin(w._mrep,rp); stp=mMarkJoin(w._mstop,stp); stl=mMarkJoin(w._mstale,stl); off=Object.assign({},w._moffer||{},off); }
   w._mnew=nw; w._mrep=rp; w._mstop=stp; w._moffer=off; w._mstale=stl; if(!Object.keys(stl).length)delete w._mstale; w._mat=new Date().toISOString();
   if(!opt.keep) w._munf=unf; if(!w._munf||!w._munf.length) delete w._munf;
   var bits=[]; if(cnt.add)bits.push(cnt.add+' new 🆕'); if(cnt.np)bits.push(cnt.np+' new problem'+(cnt.np>1?'s':'')); if(cnt.stop)bits.push(cnt.stop+' stopped'); if(cnt.res)bits.push(cnt.res+' resolved');
-  if(cnt.stale)bits.push(cnt.stale+' ✓ answered (struck)'); if(cnt.ren)bits.push(cnt.ren+' renamed'); if(cnt.dx)bits.push(cnt.dx+' Dx line'+(cnt.dx>1?'s':'')+' updated'); if(cnt.hv)bits.push('handover updated'); if(unf.length)bits.push('⚠ '+unf.length+' to file → 📥 To file');
+  if(cnt.stale)bits.push(cnt.stale+' ✓ answered (struck)'); if(cnt.ren)bits.push(cnt.ren+' renamed'); if(cnt.dx)bits.push(cnt.dx+' Dx line'+(cnt.dx>1?'s':'')+' updated'); if(cnt.hv)bits.push('handover updated'+(cnt.hvfix?' ('+cnt.hvfix.join(' / ')+' rebuilt from the note)':'')); if(unf.length)bits.push('⚠ '+unf.length+' to file → 📥 To file');
   if(cnt.rep)bits.push(cnt.rep+' re-proposed (left unticked)'); if(cnt.off)bits.push(cnt.off+' ⇄ offer'+(cnt.off>1?'s':'')); if(cnt.skip.length)bits.push('skipped (you removed): '+cnt.skip.join(', '));
   var sum=(bits.join(' · ')||'nothing new');
   ulog(n, opt.label==='before filing'?'📥 filed':(opt.label==='before re-file'?'✎ re-filed':'🔄 '+(p.kind?String(p.kind)+' ':'')+'update'), sum+(p.since?' · since '+p.since:''));
@@ -3590,7 +3617,8 @@ function medsHTML(d){
   var nS=rows.filter(function(r){return R.sec(r)===0;}).length, nP=rows.filter(function(r){return R.sec(r)===1;}).length, nH=rows.length-nS-nP;
   var h='<div class="medhd"><b>Bed '+esc(''+current)+'</b> · '+esc(d.age_sex||'')+' · Day '+esc(hvDay(d.icu_admit))+(d.subtitle?'<div class="medsub">'+esc(d.subtitle)+'</div>':'')+'</div>'
     +(al?'<div class="medal">⚠ Allergy: '+esc(al)+'</div>':'')
-    +(R.mar?'<div class="medsrcln">MAR list'+(d.meds_asof?' · as of '+esc(d.meds_asof):'')+' · '+nS+' scheduled · '+nP+' PRN'+(nH?' · '+nH+' held':'')+'</div>'
+    +((R.mar&&beds[current]&&beds[current]._medsPartial)?'<div class="mednomar">⚠ Order changes only — NOT a full MAR. These '+rows.length+' line(s) came from update patches; this bed has never had a MAR list. Send the MAR photos to get the complete list.</div>':'')
+    +(R.mar?'<div class="medsrcln">'+((beds[current]&&beds[current]._medsPartial)?'Order changes':'MAR list')+(d.meds_asof?' · as of '+esc(d.meds_asof):'')+' · '+nS+' scheduled · '+nP+' PRN'+(nH?' · '+nH+' held':'')+'</div>'
            :'<div class="mednomar">No MAR list in this note yet — showing the treatment lines from the problems instead, which can miss meds. Send the MAR photos with the morning note to fill it.</div>');
   if(!rows.length) return h+'<div class="stub">No medications in this note.</div>';
   var last=null, lastSec=-1;
