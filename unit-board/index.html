@@ -111,7 +111,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.58 · 10-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.59 · 10-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -2161,7 +2161,7 @@ function pvGroups(p){ var w=beds[p.bed], probs=(w.d.problems||[]), gp=((w._gen||
   (p.meds_stop||[]).forEach(function(m,x){ misc.push({k:['meds_stop',x],t:'⛔ med: '+medTxt(m)}); });
   ['vitals','fluids'].forEach(function(s){ if(p[s]) misc.push({k:[s],t:s+': '+Object.keys(p[s]).map(function(q){return q+' '+p[s][q];}).join(' · ')}); });
   (p.labs||[]).forEach(function(s,x){ misc.push({k:['labs',x],t:'labs '+(s.section||'')+': '+(s.items||[]).map(function(q){return q.l+' '+q.v;}).join(' · ')}); });
-  ['subtitle','handover_line','pod','reason_for_icu'].forEach(function(s){ if(p[s]!=null) misc.push({k:[s],t:s.replace('_',' ')+': '+p[s]}); });
+  ['subtitle','handover_line','pod','reason_for_icu','overnight'].forEach(function(s){ if(p[s]!=null) misc.push({k:[s],t:(s==='overnight'?'🌙 Overnight line (Handover / Concise)':s.replace('_',' '))+': '+p[s]}); });
   if(misc.length) out.push({head:'Dx list · handover · investigations · events · tasks · vitals',rows:misc});
   return out; }
 function pvFilter(p,off){ var q=_mj(p), X='\u0000';
@@ -2209,9 +2209,15 @@ function dxFollow(p){ if(!p||p.patch!==true||p._dxf)return p; p._dxf=true; var w
     p.diagnoses_rename.push({match:line,to:pp.rename,auto:true}); });
   if(!p.diagnoses_rename.length)delete p.diagnoses_rename; return p; }
 // v2.58 · a handover-card-only bed (no problem list) takes the patch's `handover` fields; anything that needs a problem list is reported, never dropped silently
+// v2.59 · the bed's Overnight line (green strip on Handover, O/N on Concise) — filled by a patch's `overnight` (or `handover.overnight`).
+// A line the board set itself is replaced by the next one; text you typed is kept and the new line is added after it.
+function mvOvnSet(w,txt){ txt=String(txt==null?'':txt).replace(/\s+/g,' ').trim(); if(!txt)return false; var cur=String(w.overnight||'').trim();
+  if(cur&&cur!==w._ovnPatch&&_mn(cur).indexOf(_mn(txt))<0) txt=cur+' · '+txt; else if(cur&&cur!==w._ovnPatch) txt=cur;
+  w.overnight=txt; w._ovnPatch=txt; return true; }
 function mergePatchCard(p,n){ var w=beds[n], c=w.hvcard, hvP=(p.handover&&typeof p.handover==='object')?p.handover:{}, done=[], lost=[];
   w._hvprev=_mj(c);
-  Object.keys(hvP).forEach(function(k){ c[k]=_mj(hvP[k]); if(k==='overnight')w.overnight=String(hvP[k]==null?'':hvP[k]); done.push(k); });
+  Object.keys(hvP).forEach(function(k){ if(k==='overnight')return; c[k]=_mj(hvP[k]); done.push(k); });
+  var _on=(p.overnight!=null)?p.overnight:hvP.overnight; if(_on!=null&&mvOvnSet(w,_on)){ c.overnight=w.overnight; done.push('overnight'); }
   var pend=(p.pending_add||[]).map(function(x){return String(x||'').trim();}).filter(Boolean);
   if(pend.length&&hvP.plan==null){ var cur=String(c.plan||''); pend.forEach(function(x){ if(_mn(cur).indexOf(_mn(x))<0)cur=cur?cur+' · '+x:x; }); c.plan=cur; done.push('pending → plan'); }
   var needTx=['problems','meds','meds_add','meds_stop','investigations_add','consults_add'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
@@ -2316,18 +2322,22 @@ function mergePatch(p,opt){ opt=opt||{};
   if(p._meta){ d._meta=p._meta; }
   // 4f · handover (v2.35): a partial handover object — merges into Claude's pre-authored card (kept); with no card, event → handover_line
   var hvP=(p.handover&&typeof p.handover==='object')?p.handover:null, keepHv=false;
+  var _on=(p.overnight!=null)?p.overnight:(hvP?hvP.overnight:null); if(_on!=null&&mvOvnSet(w,_on)){ cnt.ovn=1; if(hvP)hvP=Object.assign({},hvP,{overnight:w.overnight}); }   // v2.59: overnight reaches the bed's Overnight line
+  if(hvP&&!d.handover&&['admit','dx','tx','plan'].some(function(f){return hvP[f]!=null;})){   // v2.59: card fields sent for a bed whose authored card was dropped earlier → start a card from the note, then apply them (they used to be discarded)
+    try{ var _b=bedToHandover(_mj(d),'',true)||{}; d.handover={}; ['admit','event','dx','tx','plan','goc_text'].forEach(function(f){ if(_b[f])d.handover[f]=_b[f]; }); if(Array.isArray(_b.tags)&&_b.tags.length)d.handover.tags=_b.tags; }catch(e){ d.handover={}; } }
   if(hvP&&d.handover){ Object.keys(hvP).forEach(function(k){ d.handover[k]=_mj(hvP[k]); }); keepHv=true; cnt.hv=1; }
   else if(hvP&&hvP.event!=null){ d.handover_line=offer('top:handover_line',d.handover_line,g.handover_line,hvP.event); g.handover_line=hvP.event; cnt.hv=1; }
+  if(d.handover)keepHv=true;   // v2.59: an authored card is never thrown away by a patch — the fields the patch moved are rebuilt below
   if(keepHv){ var _txM=!!(cnt.add||cnt.stop||cnt.np||cnt.res), _dxM=!!(cnt.dx||cnt.ren||cnt.np||cnt.res);   // v2.58: the patch moved data but sent only part of the card (e.g. overnight) → rebuild the fields it left behind from the note, so the card cannot keep yesterday's doses
     if(_txM||_dxM){ try{ var _t=_mj(d); delete _t.handover; var _der=bedToHandover(_t,'',true), _fx=[];
-      (_txM?['tx','plan']:[]).concat(_dxM?['dx']:[]).forEach(function(f){ if(hvP[f]==null&&_der&&_der[f]){ d.handover[f]=_der[f]; _fx.push(f); } }); if(_fx.length)cnt.hvfix=_fx; }catch(e){} } }
+      (_txM?['tx','plan']:[]).concat(_dxM?['dx']:[]).forEach(function(f){ if((!hvP||hvP[f]==null)&&_der&&_der[f]){ d.handover[f]=_der[f]; _fx.push(f); } }); if(_fx.length)cnt.hvfix=_fx; }catch(e){} } }
   if(!keepHv) delete d.handover; if(p.handover_line==null&&!(hvP&&hvP.event!=null)&&(cnt.add||cnt.stop||cnt.np||cnt.ren||cnt.dx))delete d.handover_line;   // data moved → stale handover card re-derives
   w.d=d; w._gen=g; w._rej=rej; mScmStale(w); delete w._scm; hovRefreshBed(n);   // a saved v2 handover/concise would otherwise hide the update
   if(opt.keep){ nw=mMarkJoin(w._mnew,nw); rp=mMarkJoin(w._mrep,rp); stp=mMarkJoin(w._mstop,stp); stl=mMarkJoin(w._mstale,stl); off=Object.assign({},w._moffer||{},off); }
   w._mnew=nw; w._mrep=rp; w._mstop=stp; w._moffer=off; w._mstale=stl; if(!Object.keys(stl).length)delete w._mstale; w._mat=new Date().toISOString();
   if(!opt.keep) w._munf=unf; if(!w._munf||!w._munf.length) delete w._munf;
   var bits=[]; if(cnt.add)bits.push(cnt.add+' new 🆕'); if(cnt.np)bits.push(cnt.np+' new problem'+(cnt.np>1?'s':'')); if(cnt.stop)bits.push(cnt.stop+' stopped'); if(cnt.res)bits.push(cnt.res+' resolved');
-  if(cnt.stale)bits.push(cnt.stale+' ✓ answered (struck)'); if(cnt.ren)bits.push(cnt.ren+' renamed'); if(cnt.dx)bits.push(cnt.dx+' Dx line'+(cnt.dx>1?'s':'')+' updated'); if(cnt.hv)bits.push('handover updated'+(cnt.hvfix?' ('+cnt.hvfix.join(' / ')+' rebuilt from the note)':'')); if(unf.length)bits.push('⚠ '+unf.length+' to file → 📥 To file');
+  if(cnt.stale)bits.push(cnt.stale+' ✓ answered (struck)'); if(cnt.ren)bits.push(cnt.ren+' renamed'); if(cnt.dx)bits.push(cnt.dx+' Dx line'+(cnt.dx>1?'s':'')+' updated'); if(cnt.ovn)bits.push('🌙 overnight line set'); if(cnt.hv)bits.push('handover updated'+(cnt.hvfix?' ('+cnt.hvfix.join(' / ')+' rebuilt from the note)':'')); if(unf.length)bits.push('⚠ '+unf.length+' to file → 📥 To file');
   if(cnt.rep)bits.push(cnt.rep+' re-proposed (left unticked)'); if(cnt.off)bits.push(cnt.off+' ⇄ offer'+(cnt.off>1?'s':'')); if(cnt.skip.length)bits.push('skipped (you removed): '+cnt.skip.join(', '));
   var sum=(bits.join(' · ')||'nothing new');
   ulog(n, opt.label==='before filing'?'📥 filed':(opt.label==='before re-file'?'✎ re-filed':'🔄 '+(p.kind?String(p.kind)+' ':'')+'update'), sum+(p.since?' · since '+p.since:''));
