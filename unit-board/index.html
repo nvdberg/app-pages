@@ -65,11 +65,12 @@
   .bedbtn .chip.tx{background:#dfeee0;color:#1a6b2e}
   .bedbtn .chip.mvd{background:#fde9c8;color:#8a5200;margin-left:4px}
   #stage{flex:1;display:flex;flex-direction:column;min-width:0}
-  #pastebar{background:#dbe6f6;border-bottom:1px solid #c3d4ee;padding:11px 14px;display:flex;gap:10px;align-items:stretch}
-  #pjson{flex:1;font-family:'Consolas','Courier New',monospace;font-size:12px;min-height:54px;padding:10px 12px;border:2px dashed #a9c4ec;border-radius:8px;resize:vertical;background:#fff;line-height:1.45}
+  #pastebar{background:#dbe6f6;border-bottom:1px solid #c3d4ee;padding:11px 14px;display:flex;flex-wrap:wrap;gap:10px;align-items:stretch}
+  #pjson{flex:1 1 360px;min-width:300px;font-family:'Consolas','Courier New',monospace;font-size:12px;min-height:54px;padding:10px 12px;border:2px dashed #a9c4ec;border-radius:8px;resize:vertical;background:#fff;line-height:1.45}
   #pjson:focus{outline:none;border-color:#1a73e8}
   #pastebar button{font:inherit;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:8px;padding:0 20px;cursor:pointer;font-size:14px}
-  #msg{font-size:11px;color:#666;align-self:center;min-width:110px}
+  #msg{font-size:12.5px;color:#444;flex:1 1 100%;min-width:0;line-height:1.4}
+  #msg:empty{display:none}   /* v2.57: the status line sits on its OWN row under the paste field — a long load/merge message used to squeeze the field to a sliver */
   #bedbar{display:none;gap:8px;align-items:center;background:#eaf1fb;border-bottom:1px solid #c3d4ee;padding:7px 14px;flex-wrap:wrap}
   #bedbar .bbtag{font-weight:800;color:#1a3c8f}
   #bedbar button{font:inherit;font-weight:700;background:#1a73e8;color:#fff;border:0;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px}
@@ -110,7 +111,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.56 · 10-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.57 · 10-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
