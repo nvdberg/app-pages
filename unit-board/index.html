@@ -111,7 +111,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.62 · 27-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.63 · 27-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -2075,7 +2075,7 @@ function mCtxBed(k){ var w=beds[k]; if(!w)return ''; var d=w.d; if(current===k){
     L.push(ttl); ['admit','dx','tx','plan','goc_text','tags'].forEach(function(f){ var v=one(h[f]); if(v)L.push('   handover.'+f+': '+v); }); }
   if(!d){ if(!w.hvcard)return ''; var c=w.hvcard;
     L.push('── Bed '+k+(w.moved&&w.moved.from!=null?' (moved from Bed '+w.moved.from+' — use Bed '+k+' in the update)':'')+' · '+(c.pt||'?')+' · HANDOVER CARD ONLY (no problem list) ──');
-    cardLines(c,'Current card — a change to treatment / diagnosis / plan must be sent as handover.tx / dx / plan REWRITTEN WHOLE from this text (problems[], meds_add, tx_add cannot be shown on this bed):');
+    cardLines(c,'Current card — a change to treatment / diagnosis / plan must be sent as handover.tx / dx / plan REWRITTEN WHOLE from this text (preferred — tx_add / tx_stop / plan_add on this bed only append to / remove from these card items):');
     L.push('MAR list: none — do NOT send meds_add / meds_stop'); return L.join('\n')+'\n'; }
   L.push('── Bed '+k+(w.moved&&w.moved.from!=null?' (moved from Bed '+w.moved.from+' — use Bed '+k+' in the update)':'')+' · '+(d.age_sex||'?')+' · ICU admit '+(d.icu_admit||'?')+' ──');
   if(d.subtitle)L.push('Working dx: '+cut(d.subtitle,160));
@@ -2241,9 +2241,10 @@ function mergePatchCard(p,n){ var w=beds[n], c=w.hvcard, hvP=(p.handover&&typeof
   var _on=(p.overnight!=null)?p.overnight:hvP.overnight; if(_on!=null&&mvOvnSet(w,_on)){ c.overnight=w.overnight; done.push('overnight'); }
   var pend=(p.pending_add||[]).map(function(x){return String(x||'').trim();}).filter(Boolean);
   if(pend.length&&hvP.plan==null){ var cur=String(c.plan||''); pend.forEach(function(x){ if(_mn(cur).indexOf(_mn(x))<0)cur=cur?cur+' · '+x:x; }); c.plan=cur; done.push('pending → plan'); }
-  var needTx=['problems','meds','meds_add','meds_stop','investigations_add','consults_add'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
-  var needDx=['diagnoses_add','diagnoses_rename','diagnoses_stop'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
-  if(needTx.length&&hvP.tx==null)lost=lost.concat(needTx); if(needDx.length&&hvP.dx==null)lost=lost.concat(needDx); if(p.subtitle!=null&&hvP.dx==null&&hvP.admit==null)lost.push('subtitle');
+  done=done.concat(cardApply(p,c,hvP));   // v2.63: order changes sent the daily-note way still land on the card → tomorrow-morning handover carries them
+  var needTx=['meds','investigations_add'].filter(function(k){ return Array.isArray(p[k])&&p[k].length; });
+  if(needTx.length&&hvP.tx==null&&hvP.dx==null)lost=lost.concat(needTx); if(p.subtitle!=null&&hvP.dx==null&&hvP.admit==null)lost.push('subtitle');
+  try{ rupdAddCard(n,p,w._hvprev,c); }catch(e){ console.warn('rounds update note (card)',e); }
   hovRefreshBed(n);
   var sum=(done.length?'card updated: '+done.join(', '):'nothing applied');
   ulog(n,'🔄 '+(p.kind?String(p.kind)+' ':'')+'update (card)',sum+(lost.length?' · NOT shown on card: '+lost.join(', '):''));
@@ -2392,31 +2393,67 @@ function rupdAdd(n,p,opt,nw,stp,unf,cnt,d){ var w=beds[n]; if(!w)return;
   ((nw['__inv']||{}).tx||[]).forEach(function(l){ add('Result: '+l); });
   ((nw['__cons']||{}).tx||[]).forEach(function(l){ add('Consult: '+l); });
   (p.pending_add||[]).forEach(add); (p.events||[]).forEach(add);
-  if(!L.length)return;
+  rupdStore(w,L);
+}
+// v2.63 · handover-card-only (colleague) beds: card fields are ' · ' item lists. cardApply writes tx_* / plan_* / meds_* / dx_* onto them when the
+// patch did not rewrite that field whole, so nothing is lost before the next-morning handover; rupdAddCard lists what changed on the card.
+function cItems(v){ if(Array.isArray(v))v=v.map(function(t){return (t&&t.text)||t;}).join(' · '); return String(v==null?'':v).split(/\s+·\s+|\s*;\s+|\n+/).map(function(x){return x.trim();}).filter(Boolean); }
+function cHit(item,x){ var a=_mn(item), b=_mn(x); if(!b)return false; if(a.indexOf(b)===0||b.indexOf(a)===0)return true; var ta=_mtok(item)[0], tb=_mtok(x)[0]; return !!ta&&ta===tb; }
+function cardApply(p,c,hvP){ var did=[], ed={};
+  var edit=function(f,adds,stops){ if(hvP[f]!=null||!(adds.length||stops.length))return; var it=cItems(c[f]), n0=it.length, ch=0;
+    stops.forEach(function(x){ x=String(x||'').trim(); if(!x)return; var k=it.length; it=it.filter(function(i){ return !cHit(i,x); }); ch+=k-it.length; });
+    adds.forEach(function(x){ x=String(x||'').replace(/\s+/g,' ').trim(); if(x&&!_mhas(it,x)){ it.push(x); ch++; } });
+    if(ch){ c[f]=it.join(' · '); ed[f]=1; } };
+  var tA=[], tS=[], pA=[], pS=[], dA=[], dS=[];
+  (p.problems||[]).forEach(function(pp){ if(!pp)return; tA=tA.concat(pp.tx_add||[]); tS=tS.concat(pp.tx_stop||[]); pA=pA.concat(pp.plan_add||[]); pS=pS.concat(pp.plan_stop||[]);
+    if(pp.match==='NEW'&&pp.name)dA.push(pp.name); if(pp.resolve&&(pp.match||pp.name))dS.push(pp.match||pp.name);
+    if(pp.rename&&pp.match&&pp.match!=='NEW'){ dS.push(pp.match); dA.push(pp.rename); } });
+  (p.meds_add||[]).forEach(function(m){ tA.push(medTxt(m)); }); (p.meds_stop||[]).forEach(function(m){ tS.push(medTxt(m)); });
+  (p.consults_add||[]).forEach(function(x){ pA.push('Consult: '+x); });
+  (p.diagnoses_rename||[]).forEach(function(r){ if(r&&r.match&&r.to){ dS.push(r.match); dA.push(r.to); } });
+  dA=dA.concat(p.diagnoses_add||[]); dS=dS.concat(p.diagnoses_stop||[]);
+  edit('tx',tA,tS); edit('plan',pA,pS); edit('dx',dA,dS);
+  Object.keys(ed).forEach(function(f){ did.push(f+' (from order changes)'); }); return did; }
+function rupdStore(w,L){ if(!L.length)return;
   if(!w._rupd||w._rupd.day!==viewIso) w._rupd={day:viewIso,b:[]};
   var t=new Date(), hm=String(t.getHours()).padStart(2,'0')+':'+String(t.getMinutes()).padStart(2,'0'), first=!w._rupd.b.length;
   w._rupd.b.push({t:hm,l:L});
-  if(w._rupd.txt!=null) w._rupd.txt=w._rupd.txt.replace(/\s+$/,'')+'\n'+rupdLines(L,first?'':hm);
-}
+  if(w._rupd.txt!=null) w._rupd.txt=w._rupd.txt.replace(/\s+$/,'')+'\n'+rupdLines(L,first?'':hm); }
+function rupdAddCard(n,p,old,c){ var w=beds[n]; if(!w)return;
+  var kind=String(p.kind||'').toLowerCase(); if(kind==='morning'||kind==='overnight')return;
+  var L=[], add=function(s){ s=String(s==null?'':s).replace(/\s+/g,' ').trim(); if(s&&!_mhas(L,s))L.push(s); }; old=old||{};
+  var rn=p.rounds_note; (Array.isArray(rn)?rn:(rn!=null?[rn]:[])).forEach(add);
+  var df=function(f){ var a=cItems(old[f]), b=cItems(c[f]); return {nw:b.filter(function(x){return !_mhas(a,x);}), gone:a.filter(function(x){return !_mhas(b,x);})}; };
+  var dx=df('dx'), tx=df('tx'), pl=df('plan');
+  dx.nw.forEach(function(x){ add('NEW problem: '+x); }); dx.gone.forEach(function(x){ add('Resolved: '+x); });
+  tx.gone.forEach(function(x){ add('Stop '+x); }); tx.nw.forEach(add);
+  pl.gone.forEach(function(x){ add('Removed from plan: '+x); }); pl.nw.forEach(add);
+  (p.investigations_add||[]).forEach(function(x){ add('Result: '+x); }); (p.events||[]).forEach(add);
+  rupdStore(w,L); }
 function rupdLines(L,hm){ return L.map(function(s){ return '• '+(hm?hm+' ':'')+s; }).join('\n'); }
 function rupdBuild(r){ return 'Rounds update ('+boardDate(r.day)+'):\n'+r.b.map(function(x,i){ return rupdLines(x.l,i?x.t:''); }).join('\n'); }
-function rupdInject(f,n){ var w=beds[n], r=w&&w._rupd; if(!r||r.day!==viewIso||!(r.b||[]).length)return;
-  var doc=f.contentDocument, win=f.contentWindow; if(!doc||!doc.body||doc.getElementById('ubrupd'))return;
+function rupdInject(f,n){ var doc=f.contentDocument, win=f.contentWindow; if(!doc||!doc.body)return;
+  rupdPanel(doc,doc.body,n,(win&&typeof win.scmWrap==='function')?win.scmWrap:null); }
+var _bScmWrap;   // card beds have no tool iframe → borrow the tool's own scmHang + scmWrap (SCM-parity source), never a copy
+function boardScmWrap(){ if(_bScmWrap!==undefined)return _bScmWrap; _bScmWrap=null;
+  try{ var s=toolHTML(), a=s.indexOf('function scmHang('), b=s.indexOf('\nfunction cSCM('); if(a>=0&&b>a)_bScmWrap=new Function(s.slice(a,b)+';return scmWrap;')(); }catch(e){ _bScmWrap=null; }
+  return _bScmWrap; }
+function rupdPanel(doc,host,n,wrap){ var w=beds[n], r=w&&w._rupd; if(!r||r.day!==viewIso||!(r.b||[]).length||doc.getElementById('ubrupd'))return;
   var bs='border:none;border-radius:5px;padding:12px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;color:#fff';
   var box=doc.createElement('div'); box.id='ubrupd'; box.className='scp';
-  box.style.cssText='display:block;background:#e7f0fd;border-color:#1a73e8';
-  box.innerHTML='<h3 style="color:#1a3c8f">&#128260; Rounds update &mdash; today&rsquo;s changes ('+r.b.length+' update'+(r.b.length>1?'s':'')+') &middot; copy and add to your SCM progress note</h3>'
-    +'<textarea id="ubrupdt" class="scm" spellcheck="false" style="display:block;width:100%;box-sizing:border-box;resize:vertical;min-height:120px"></textarea>'
+  box.style.cssText='display:block;background:#e7f0fd;border:2px solid #1a73e8;border-radius:6px;padding:14px;margin-top:14px;max-width:900px;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif';
+  box.innerHTML='<h3 style="color:#1a3c8f;font-size:12px;font-weight:700;text-transform:uppercase;margin:0 0 8px">&#128260; Rounds update &mdash; today&rsquo;s changes ('+r.b.length+' update'+(r.b.length>1?'s':'')+') &middot; copy and add to your SCM progress note</h3>'
+    +'<textarea id="ubrupdt" class="scm" spellcheck="false" style="display:block;width:100%;box-sizing:border-box;resize:vertical;min-height:120px;background:#fff;border:1px solid #b6cff0;border-radius:4px;padding:14px;font-family:Consolas,\'Courier New\',monospace;font-size:12px;color:#111;line-height:1.65"></textarea>'
     +'<div style="display:flex;gap:10px;margin-top:12px">'
     +'<button id="ubrupdg" style="flex:1;background:#1a73e8;'+bs+'" title="Rebuild from today\'s merged updates (drops your edits in this box)">&#9889; Generate</button>'
     +'<button id="ubrupdc" style="flex:2;background:#28a745;'+bs+'">&#128203; Copy Rounds update</button>'
     +'<button id="ubrupdx" style="flex:1;background:#6c757d;'+bs+'" title="Clear today\'s Rounds update for this bed (the daily note keeps the merged changes)">&#10005; Clear</button></div>';
-  doc.body.appendChild(box);
+  host.appendChild(box);
   var ta=doc.getElementById('ubrupdt'), fit=function(){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight+4,doc.documentElement.clientHeight*0.6)+'px'; };
   ta.value=(r.txt!=null)?r.txt:rupdBuild(r); setTimeout(fit,0);
   var tmr=null; ta.addEventListener('input',function(){ fit(); if(readOnly)return; clearTimeout(tmr); tmr=setTimeout(function(){ if(beds[n]&&beds[n]._rupd){ beds[n]._rupd.txt=ta.value; save(); } },700); });
   doc.getElementById('ubrupdg').onclick=function(){ if(!beds[n]||!beds[n]._rupd)return; delete beds[n]._rupd.txt; ta.value=rupdBuild(beds[n]._rupd); fit(); if(!readOnly)save(); };
-  doc.getElementById('ubrupdc').onclick=function(){ var b=this, v=ta.value.replace(/\s+$/,''); copyText((win&&typeof win.scmWrap==='function')?win.scmWrap(v):v);
+  doc.getElementById('ubrupdc').onclick=function(){ var b=this, v=ta.value.replace(/\s+$/,''); copyText(wrap?wrap(v):v);
     b.textContent='✓ Copied!'; setTimeout(function(){ b.innerHTML='&#128203; Copy Rounds update'; },2500); flashMsg('📋 Bed '+n+' Rounds update copied'); };
   doc.getElementById('ubrupdx').onclick=function(){ var b=this; if(readOnly)return;
     if(b.dataset.armed!=='1'){ b.dataset.armed='1'; b.textContent='Tap again to clear'; b.style.background='#dc3545'; setTimeout(function(){ b.dataset.armed=''; b.innerHTML='&#10005; Clear'; b.style.background='#6c757d'; },3000); return; }
@@ -2522,6 +2559,7 @@ function renderView(){
       else if(beds[current].rr && (beds[current].kind==='consult'||beds[current].kind==='code')){ view.innerHTML=rrCardHTML(current); bindRRCard(current); }
       else if(beds[current].hvcard && !beds[current].d){
         view.innerHTML='<div class="panel"><div class="stub"><b>Bed '+current+' — handover-only.</b><br>A colleague / uncharted bed (mini handover card, <code>hv:1</code>). It appears on the <b>Handover</b> tab. To add a full daily note, paste this bed&rsquo;s §10 JSON.</div></div>';
+        try{ rupdPanel(document,view.firstChild,current,boardScmWrap()); }catch(e){ console.warn('rounds update panel (card)',e); }
       }
       else {
         var d=bd(current), f=document.createElement('iframe'), html;
