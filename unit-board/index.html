@@ -111,7 +111,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.63 · 27-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.64 · 27-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -203,7 +203,8 @@ function rsFile(){ var d=rsShiftNow(),m=['Jan','Feb','Mar','Apr','May','Jun','Ju
 function rsLines(v){ if(!v)return []; if(Array.isArray(v))return v.filter(function(x){return x!=null&&String(x).trim();}); return String(v).split(/\r?\n/).map(function(x){return x.trim();}).filter(Boolean); }
 function rsWarn(t){ return /^⚠|threshold|avoid|risk|allerg|airway|unsecured|bleed|deteriorat|watch/i.test(t); }
 function rsFlag(v){ // wrap (H)/(L) etc in colour spans
-  return rsEsc(v).replace(/\((HH|LL|H|L)\)/g,function(m,g){ var c=(g[0]==='H')?'hi':'lo'; return '<span class="'+c+'">('+g+')</span>'; }); }
+  return rsEsc(v).replace(/\((HH|LL|H|L)\)/g,function(m,g){ var c=(g[0]==='H')?'hi':'lo'; return '<span class="'+c+'">('+g+')</span>'; })
+    .replace(/\((\d{1,2}-[A-Z][a-z]{2}|date\?)\)/g,'<span class="old">($1)</span>'); }   // 27-Oct-2026: an older draw date stands out, never read as today's
 
 // age_sex ("75M" / "66 F") → {age, sex-noun} for the spoken one-liner
 function rsPerson(ageSex){ var s=String(ageSex==null?'':ageSex); var age=(s.match(/\d+/)||[''])[0];
@@ -294,11 +295,16 @@ function rsSnapBlock(d){
   if(abg&&abg.items&&abg.items.length){
     var parts=abg.items.filter(function(it){return it&&it.v!=null&&String(it.v).trim();}).map(function(it){
       var suf=(it.f==='hi'?' (H)':it.f==='lo'?' (L)':''); return (it.l?rsEsc(it.l)+' ':'')+rsFlag(String(it.v)+suf); });
-    if(parts.length)out+='<div class="strip"><span class="sl">ABG</span> '+parts.join(' &nbsp;·&nbsp; ')+'</div>';
+    var asd=rsSecDate(abg.section);
+    if(parts.length)out+='<div class="strip"><span class="sl">ABG'+(asd?' <span class="old">('+rsEsc(asd)+')</span>':'')+'</span> '+parts.join(' &nbsp;·&nbsp; ')+'</div>';
   }
   return out;
 }
 
+// '(26-Oct)' at the end of a lab section name → '26-Oct' when that isn't the sheet's day (today's date stays hidden)
+function rsSecDate(sec){ var m=String(sec||'').match(/\((\d{1,2})[\s-]([A-Za-z]{3})[^)]*\)\s*$/); if(!m)return '';
+  var d=rsShiftNow(), mo=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
+  return (+m[1]===d.getDate()&&m[2].toLowerCase()===mo[d.getMonth()])?'':m[1]+'-'+m[2]; }
 function rsLabsBlock(d){
   var labs=(d.labs||[]).filter(function(s){return !/abg|vbg|gas/i.test(s.section||'');});
   if(!labs.length)return '';
@@ -309,7 +315,8 @@ function rsLabsBlock(d){
       return (it.l?rsEsc(it.l)+' ':'')+disp;
     });
     if(!items.length)return '';
-    return '<div class="line"><span class="pn">'+rsEsc((sec.section||'').replace(/\s*\(.*\)$/,''))+'</span> '+items.join(' &nbsp;·&nbsp; ')+'</div>';
+    var sd=rsSecDate(sec.section);   // 27-Oct-2026: a section drawn on an earlier day keeps its date, so it's never read as today's
+    return '<div class="line"><span class="pn">'+rsEsc((sec.section||'').replace(/\s*\(.*\)$/,''))+(sd?' <span class="old">('+rsEsc(sd)+')</span>':'')+'</span> '+items.join(' &nbsp;·&nbsp; ')+'</div>';
   }).filter(Boolean).join('');
   return lines?('<div class="labs"><h3>Labs</h3>'+lines+'</div>'):'';
 }
@@ -423,7 +430,7 @@ function renderRoundingSheet(d){
    +'.labs .line{font-size:8.4pt;line-height:1.4;margin-bottom:1px}.labs .line .pn{font-weight:700;color:#333;display:inline-block;min-width:78px}'
    +'.invs{border:1px solid #666;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fafafa}.invs h3{font-size:7.6pt;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:#333;margin-bottom:3px}.invs ul{margin:0;padding-left:15px;font-size:8.5pt;line-height:1.42}.invs li{padding:1px 0}'
    +'.exam{border:1px solid #666;border-top:0;padding:4px 8px;margin-bottom:5px;break-inside:avoid;background:#fff}.exam .line{font-size:8.7pt;line-height:1.4;margin-bottom:1.5px}.exam .pn{font-weight:800;text-transform:uppercase;font-size:7pt;letter-spacing:.3px;color:#555;display:inline-block;min-width:50px;vertical-align:top}'
-   +'.hi{color:#b02020;font-weight:700}.lo{color:#0d47a1;font-weight:700}'
+   +'.hi{color:#b02020;font-weight:700}.lo{color:#0d47a1;font-weight:700}.old{color:#a15c00;font-weight:700}'
    +'table.prob{width:100%;border-collapse:collapse;margin-bottom:6px;font-size:9.4pt}'
    +'table.prob thead{display:table-header-group;background:#000;color:#fff}table.prob thead th{padding:4px 7px;text-align:left;font-weight:700;text-transform:uppercase;font-size:8pt;letter-spacing:.5px}'
    +'table.prob tbody tr{page-break-inside:avoid;break-inside:avoid;border-bottom:1px solid #999}table.prob tbody td{padding:5px 7px;vertical-align:top;line-height:1.38}'
