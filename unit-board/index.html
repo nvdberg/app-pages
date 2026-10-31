@@ -112,7 +112,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.66 · 29-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.67 · 31-Oct-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -971,7 +971,8 @@ function capCardioFinish(yr,mi,days,nowIso){   // days {1..last:{day,oncall,stem
   var last=new Date(yr,mi+1,0).getDate(), fw=new Date(yr,mi,1).getDay(), missing=[], rows=[];
   for(var d=1;d<=last;d++){ if(!days[d]||!days[d].day||!days[d].oncall) missing.push(d); }
   for(var d2=1;d2<=last;d2++){ var dd=days[d2]||{}, date=yr+'-'+('0'+(mi+1)).slice(-2)+'-'+('0'+d2).slice(-2);
-    ['day','oncall','stemi_day','stemi_oncall','consults'].forEach(function(r){ rows.push({date:date,unit:'CCU',role:r,name:dd[r]||null,source:'cardiology-pdf',imported_at:nowIso}); }); }
+    ['day','oncall','stemi_day','stemi_oncall','consults'].forEach(function(r){ rows.push({date:date,unit:'CCU',role:r,name:dd[r]||null,source:'cardiology-pdf',imported_at:nowIso}); });
+    if(dd.unit) rows.push({date:date,unit:'CCU',role:'unit',name:dd.unit,source:'cardiology-pdf',imported_at:nowIso}); }
   return {year:yr, month:mi, last:last, fw:fw, days:days, rows:rows, missing:missing, unknown:[], legendN:0};
 }
 // fallback route: a screenshot / printed PDF read by Claude in a chat, pasted here as JSON (see CAP_CARD_PROMPT)
@@ -983,15 +984,16 @@ function capParseCardioJson(text, nowIso){
   var days={}, nm=function(v){ v=v==null?'':capClean(String(v)).replace(/^dr\.?\s+/i,''); return (!v||/^(null|none|\?|unknown|n\/a)$/i.test(v))?null:v; };
   Object.keys(o.days).forEach(function(k){ var n=parseInt(k,10), x=o.days[k]||{}; if(!(n>=1&&n<=31)) return;
     var d=nm(x.day), oc=nm(x.oncall)||d, sd=nm(x.stemi_day), so=nm(x.stemi_oncall)||sd;
-    days[n]={day:d,oncall:oc,stemi_day:sd,stemi_oncall:so,consults:nm(x.consults)}; });
+    days[n]={day:d,oncall:oc,stemi_day:sd,stemi_oncall:so,consults:nm(x.consults),unit:nm(x.unit)}; });
   return capCardioFinish(yr,mi,days,nowIso);
 }
 var CAP_CARD_PROMPT='Read the attached cardiology on-call calendar (one month) and reply with ONLY one JSON code block, no other text:\n'
- +'{"cardiology":{"year":2026,"month":10,"days":{"1":{"day":"","oncall":"","stemi_day":"","stemi_oncall":"","consults":""},"2":{…}}}}\n\n'
+ +'{"cardiology":{"year":2026,"month":10,"days":{"1":{"day":"","oncall":"","stemi_day":"","stemi_oncall":"","consults":"","unit":""},"2":{…}}}}\n\n'
  +'Rules:\n- month/year: from the title or the Month / Year boxes. One entry for EVERY day of the month.\n'
  +'- day / oncall = the cardiologist on call, written as a full surname in the cell. Split day ("X before 1700" / "Y after 1700"): day = X, oncall = Y. Otherwise both the same.\n'
  +'- stemi_day / stemi_oncall = the initials beside the day number (interventional / STEMI), split the same way.\n'
  +'- consults = the initials on the "8-5 Consults:" line.\n'
+ +'- unit = FRIDAYS ONLY: the name in the beige (shaded) block in the Friday cell — the cardiologist physically in CCU from that Friday to the next Thursday. It is usually NOT the day/oncall name. Every other day: null.\n'
  +'- Expand every set of initials to the SURNAME using the legend at the bottom of the page (e.g. "XX – Dr. X. Surname" → "Surname"). Surnames only, no "Dr.".\n'
  +'- Ignore "STAT". Do not guess: if something cannot be read, use null. Staff names only — there is no patient information on this page.';
 
@@ -1372,9 +1374,16 @@ function capvNight(ix,k){   // night on-call grouped by person → [{name, units
 function capvNightTxt(g){ if(!g.length) return '<span class="none">—</span>';
   return '<span class="n1">'+esc(g[0].name)+'</span>'+(g.length>1?'<span class="n2">(2nd '+g.slice(1).map(function(x){ return esc(x.name); }).join(', ')+')</span>':''); }
 function capvHome(ix,k,name){ if(!name) return null; for(var i=0;i<CAPV_ICU.length;i++){ if(ix[k+'|'+CAPV_ICU[i][0]+'|day']===name) return CAPV_ICU[i]; } return null; }   // the unit the night on-call person works by day
-function capvCcuWeek(ix,k){ var d=capFromYmd(k); d=capAddDays(d,-((d.getDay()+2)%7)); return ix[capYmd(d)+'|CCU|day']||null; }   // physically in CCU: the cardiologist on the Friday that starts this Fri–Thu week
+function capvFri(k){ var d=capFromYmd(k); return capYmd(capAddDays(d,-((d.getDay()+2)%7))); }   // the Friday that starts this Fri–Thu week
+// physically in CCU (31-Oct-2026): the name in the BEIGE block on that Friday, in unit Fri → next Thu. NOT the Friday call cardiologist — a different person.
+function capvCcuWeek(ix,k){ return ix[capvFri(k)+'|CCU|unit']||null; }
+function capvSetCcuUnit(k){ var f=capvFri(k), cur=capvCcuWeek(capvIdx(),k)||'';
+  var n=prompt('Cardiologist IN CCU for the week Fri '+capShort(f)+' → Thu '+capShort(capYmd(capAddDays(capFromYmd(f),6)))+'\n(the name in the beige block on the Friday of the cardiology calendar — surname only; empty = clear)',cur);
+  if(n===null) return; n=capClean(String(n)).replace(/^dr\.?\s+/i,'').trim();
+  capUpsert('oncall_roster','date,unit,role',[{date:f,unit:'CCU',role:'unit',name:n||null,source:'manual',imported_at:new Date().toISOString()}])
+    .then(function(){ capViewLoad(true); }, function(e){ alert('Not saved — '+e.message); }); }
 function capvStamp(){   // when each list was last IMPORTED (Capture tab) + how far it runs + whether it is due for an update → html
-  var mx={}, end={}; (capView.roster||[]).forEach(function(r){ var k=r.source==='petal'?'Intensivists':'Cardiology'; if(r.imported_at&&(!mx[k]||r.imported_at>mx[k])) mx[k]=r.imported_at; if(r.name&&(!end[k]||r.date>end[k])) end[k]=r.date; });
+  var mx={}, end={}; (capView.roster||[]).forEach(function(r){ if(r.source==='manual') return; var k=r.source==='petal'?'Intensivists':'Cardiology'; if(r.imported_at&&(!mx[k]||r.imported_at>mx[k])) mx[k]=r.imported_at; if(r.name&&(!end[k]||r.date>end[k])) end[k]=r.date; });
   var f=function(iso){ var d=new Date(iso), n=capAge(iso); return CAP_MONTHS[d.getMonth()].slice(0,3)+' '+d.getDate()+', '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2)+(n===0?' (today)':(n===1?' (yesterday)':' ('+n+' d ago)')); };
   var S=capStatus(), st={Intensivists:S.petal,Cardiology:S.cardio};
   return ['Intensivists','Cardiology'].map(function(k){ var due=st[k]&&st[k].ok===false;
@@ -1395,8 +1404,8 @@ function renderOncall(view){ capvCss(); capViewLoad(false);
   var G0=capvNight(ix,sel), home0=G0.length?capvHome(ix,sel,G0[0].name):null;
   CAPV_ICU.forEach(function(u){ var n=ix[dayK+'|'+u[0]+'|day'], on=home0&&home0[0]===u[0]; h+='<div class="cvchip u-'+u[0]+(on?' onc':'')+'"><div class="u">'+u[1]+'</div><div class="n">'+(n?esc(n):'<span class="none">not loaded</span>')+'</div>'+(on?'<div class="x">🌙 on call tonight · all ICUs</div>':'')+'</div>'; });
   var cd=ix[dayK+'|CCU|day'], sd=ix[dayK+'|CCU|stemi_day'], co=ix[dayK+'|CCU|consults'];
-  var cw=capvCcuWeek(ix,dayK), cx=[cw&&cd&&cd!==cw?'day call '+esc(cd):'', sd?'STEMI '+esc(sd):'', co?'consults '+esc(co):''].filter(Boolean);
-  h+='<div class="cvchip ccu"><div class="u">CCU'+(cw?' · in unit this week':'')+'</div><div class="n">'+(cw||cd?esc(cw||cd):'<span class="none">not loaded</span>')+'</div>'+(cx.length?'<div class="x">'+cx.join(' · ')+'</div>':'')+'</div>';
+  var cw=capvCcuWeek(ix,dayK), cx=[cd&&cd!==cw?'day call '+esc(cd):'', sd?'STEMI '+esc(sd):'', co?'consults '+esc(co):''].filter(Boolean);
+  h+='<div class="cvchip ccu"><div class="u">CCU · in unit Fri → Thu <a href="#" onclick="capvSetCcuUnit(\''+dayK+'\');return false" title="Set the cardiologist in CCU this week (beige block on the Friday)">✎</a></div><div class="n">'+(cw?esc(cw):'<span class="none">not set — ✎ from the beige Friday block</span>')+'</div>'+(cx.length?'<div class="x">'+cx.join(' · ')+'</div>':'')+'</div>';
   h+='</div></div>';
   var G=capvNight(ix,nd), cn=ix[nd+'|CCU|oncall'], sn=ix[nd+'|CCU|stemi_oncall'];
   h+='<div class="cvrow'+(night?' live':'')+'"><div class="cvlab">🌙 Night on call <small>17:00–08:00'+(night?' · now':'')+(!pick&&hr<8?' · since last evening':'')+'</small></div><div class="cvnow">';
