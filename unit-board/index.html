@@ -112,7 +112,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.68 · 31-Oct-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.69 · 05-Nov-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1374,12 +1374,15 @@ function capvNightTxt(g){ if(!g.length) return '<span class="none">—</span>';
   return '<span class="n1">'+esc(g[0].name)+'</span>'+(g.length>1?'<span class="n2">(2nd '+g.slice(1).map(function(x){ return esc(x.name); }).join(', ')+')</span>':''); }
 function capvHome(ix,k,name){ if(!name) return null; for(var i=0;i<CAPV_ICU.length;i++){ if(ix[k+'|'+CAPV_ICU[i][0]+'|day']===name) return CAPV_ICU[i]; } return null; }   // the unit the night on-call person works by day
 function capvFri(k){ var d=capFromYmd(k); return capYmd(capAddDays(d,-((d.getDay()+2)%7))); }   // the Friday that starts this Fri–Thu week
-// physically in CCU (31-Oct-2026): the black name on the beige line of that FRIDAY, in unit Fri → next Thu. A ✎ manual entry (role 'unit') overrides it.
-function capvCcuWeek(ix,k){ var f=capvFri(k); return ix[f+'|CCU|unit']||ix[f+'|CCU|day']||null; }
+// physically in CCU (31-Oct-2026): the black name on the beige line of that FRIDAY, in unit Fri → next Thu. A ✎ manual entry overrides it:
+// one role 'ccu' row per day Fri → Thu (5-Nov-2026 — Working-Bolt reads the day's 'ccu' row; the old Friday 'unit' row is still honoured).
+function capvCcuWeek(ix,k){ var f=capvFri(k); return ix[k+'|CCU|ccu']||ix[f+'|CCU|unit']||ix[f+'|CCU|day']||null; }
 function capvSetCcuUnit(k){ var f=capvFri(k), cur=capvCcuWeek(capvIdx(),k)||'';
   var n=prompt('Cardiologist IN CCU for the week Fri '+capShort(f)+' → Thu '+capShort(capYmd(capAddDays(capFromYmd(f),6)))+'\n(overrides the Friday beige-line name from the calendar — surname only; empty = back to the calendar)',cur);
   if(n===null) return; n=capClean(String(n)).replace(/^dr\.?\s+/i,'').trim();
-  capUpsert('oncall_roster','date,unit,role',[{date:f,unit:'CCU',role:'unit',name:n||null,source:'manual',imported_at:new Date().toISOString()}])
+  var now=new Date().toISOString(), rows=[{date:f,unit:'CCU',role:'unit',name:null,source:'manual',imported_at:now}];   // clear the legacy Friday row
+  for(var i=0;i<7;i++) rows.push({date:capYmd(capAddDays(capFromYmd(f),i)),unit:'CCU',role:'ccu',name:n||null,source:'manual',imported_at:now});
+  capUpsert('oncall_roster','date,unit,role',rows)
     .then(function(){ capViewLoad(true); }, function(e){ alert('Not saved — '+e.message); }); }
 function capvStamp(){   // when each list was last IMPORTED (Capture tab) + how far it runs + whether it is due for an update → html
   var mx={}, end={}; (capView.roster||[]).forEach(function(r){ if(r.source==='manual') return; var k=r.source==='petal'?'Intensivists':'Cardiology'; if(r.imported_at&&(!mx[k]||r.imported_at>mx[k])) mx[k]=r.imported_at; if(r.name&&(!end[k]||r.date>end[k])) end[k]=r.date; });
