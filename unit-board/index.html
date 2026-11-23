@@ -112,7 +112,7 @@
 </head>
 <body>
 <header>
-  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.71 · 21-Nov-2026</span></h1>
+  <h1>🏥 ICU Unit Board <span style="font-weight:400;opacity:.7;font-size:11px">v2.72 · 23-Nov-2026</span></h1>
   Unit <select id="unitSel" onchange="switchUnit()"></select>
   <span style="display:flex;gap:5px;align-items:center;font-size:12px;opacity:.95">· <input type="date" id="dateInp" onchange="onDatePick()" title="Pick a date to look back" style="font:inherit;padding:2px 6px;border-radius:5px;border:0"><button id="todayBtn" onclick="goToday()" style="display:none;font:inherit;font-weight:700;background:#2a4ea0;color:#fff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">Today</button><button id="histBtn" onclick="openHist()" title="Jump to a unit + date you entered before" style="font:inherit;font-weight:700;background:#1f3a78;color:#cfe0ff;border:0;border-radius:5px;padding:3px 9px;cursor:pointer">🕑 History</button></span>
   <span id="syncst" class="syncst" onclick="syncSetup()" title="Cross-device sync — click to set your private passphrase (same on every device)">sync off</span>
@@ -1444,16 +1444,39 @@ function capvMenuDay(site,date){   // → {day, page, exact, weeks} — the stor
   return best; }
 function capvLabel(l){ return capClean(String(l||'').replace(/\s*top of page[\s\S]*$/i,'')); }
 function capvRealItem(it){ return !/^prior\b.*\bweek\b/i.test(String(it&&it.name||'')); }
+// Menu tidy (v2.72, 23-Nov-2026): some intranet pages are malformed — several labels stacked in one cell with the dishes
+// read across the row ("Today's Soup Lunch Feature Sides Supper Feature"), a missing "Side" label, soup "Lg" prices as
+// nameless rows. Fixed here at display time so stored weeks and future captures both read cleanly.
+var CAPV_LABS=/(caf[ée]\s*pizza|today.?s\s*soup|lunch\s*feature|lunch\s*sides?|supper\s*feature|supper\s*sides?|sides?)/gi;
+function capvPnum(p){ if(typeof p==='number') return p; var m=String(p||'').match(/\$\s*(\d+(?:\.\d+)?)/); return m?+m[1]:NaN; }
+function capvTidy(items){ var out=[];
+  items.forEach(function(it){ var nm=capClean(String(it&&it.name||'')).replace(/\s*\.$/,''), pr=it&&it.price, has=pr!=null&&pr!=='';
+    if(!nm&&has&&out.length&&out[out.length-1].price!=null&&out[out.length-1].price!==''){ var pv=out[out.length-1]; pv.price=capvPrice(pv.price)+' · '+capvPrice(pr); return; }   // "Lg $3.65" on its own row
+    if(nm||has) out.push({name:nm,price:pr}); });
+  return out; }
+function capvSplit(day){
+  var secs=(day.sections||[]).map(function(s){ return {label:capvLabel(s.label),items:capvTidy((s.items||[]).filter(capvRealItem))}; }), out=[];
+  secs.forEach(function(s){ var labs=s.label.match(CAPV_LABS)||[];
+    if(labs.length>1&&!capClean(s.label.replace(CAPV_LABS,''))&&s.items.length%labs.length===0){   // stacked labels → dishes go across, label by label
+      labs.forEach(function(l,k){ out.push({label:capClean(l),items:s.items.filter(function(x,i){ return i%labs.length===k; })}); }); return; }
+    out.push(s); });
+  for(var i=0;i<out.length;i++){ var s=out[i], nx=out[i+1];   // a feature with 4 dishes alternating dear/cheap and no side card after it → feature, side, feature, side
+    if(!/feature/i.test(s.label)||s.items.length!==4||(nx&&/side/i.test(nx.label))) continue;
+    var it=s.items, alt=[0,2].every(function(j){ var a=capvPnum(it[j].price), b=capvPnum(it[j+1].price); return a>0&&b>0&&b<a; });
+    if(alt){ out.splice(i+1,0,{label:'Sides',items:[it[1],it[3]]}); s.items=[it[0],it[2]]; } }
+  out.forEach(function(s){ if(/^sides?$/i.test(s.label)) s.label='Sides'; else if(/^caf[ée]\s*pizza$/i.test(s.label)) s.label='Café Pizza'; });
+  return out.filter(function(s){ return s.items.length; }); }
 function capvGroups(day){   // lunch feature + side → pizza · soup → supper feature + side
   var G=[{title:'Lunch',secs:[]},{title:'Pizza · Soup',secs:[]},{title:'Supper',secs:[]}], supper=false;
-  (day.sections||[]).forEach(function(s){ var lab=capvLabel(s.label), items=(s.items||[]).filter(capvRealItem), l=lab.toLowerCase(), g; if(!items.length) return;
-    if(/^(caf[ée]\s*pizza|pizza|today.s soup|soup)/.test(l)) g=1; else if(/^supper/.test(l)){ g=2; supper=true; } else if(/^(lunch|chef)/.test(l)) g=0; else g=supper?2:0;
+  capvSplit(day).forEach(function(s){ var lab=s.label, items=s.items, l=lab.toLowerCase(), g;
+    if(/^(caf[ée]\s*pizza|pizza|today.?s soup|soup)/.test(l)) g=1; else if(/^supper/.test(l)){ g=2; supper=true; } else if(/^(lunch|chef)/.test(l)) g=0; else g=supper?2:0;
     if(/supper/.test(l)) supper=true;
     G[g].secs.push({label:lab,items:items}); });
   [0,2].forEach(function(i){ G[i].secs.sort(function(a,b){ return (/side/i.test(a.label)&&!/feature/i.test(a.label)?1:0)-(/side/i.test(b.label)&&!/feature/i.test(b.label)?1:0); }); });
   G[1].secs.sort(function(a,b){ return (/soup/i.test(a.label)?1:0)-(/soup/i.test(b.label)?1:0); });
   return G; }
-function capvPrice(p){ if(p==null||p==='') return ''; return typeof p==='number'?'$'+p.toFixed(2):String(p); }
+function capvPrice(p){ if(p==null||p==='') return ''; if(typeof p==='number') return '$'+p.toFixed(2);
+  return capClean(String(p).replace(/\s*[-–:]\s*\$/g,' $').replace(/(\$\s*\d+(?:\.\d+)?)\s+(?=(?:sm|lg|small|large|med|reg)\b|\$)/gi,'$1 · ')); }
 function renderMenu(view){ capvCss(); capViewLoad(false);
   var t=new Date(), site=capvSite(), off=capView.off||0, d=capAddDays(t,off);
   var h='<div class="cvw"><div class="cvin">'+capvHead('🍽 Menu',(site==='PH'?'Pasqua':'Regina General')+' · '+capvWhen(d));
